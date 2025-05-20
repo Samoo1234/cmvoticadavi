@@ -1,189 +1,55 @@
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[]
+export interface CustoOSType {
+  id: number;
+  filial_id: number | null;
+  data: string | null;
+  valor_venda: number | null;
+  custo_lentes: number | null;
+  custo_armacoes: number | null;
+  custo_mkt: number | null;
+  outros_custos: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
 
-export interface Database {
-  public: {
-    Tables: {
-      custos_os: {
-        Row: {
-          id: number
-          filial_id: number | null
-          data: string | null
-          valor_venda: number | null
-          custo_lentes: number | null
-          custo_armacoes: number | null
-          custo_mkt: number | null
-          outros_custos: number | null
-          created_at: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          filial_id?: number | null
-          data?: string | null
-          valor_venda?: number | null
-          custo_lentes?: number | null
-          custo_armacoes?: number | null
-          custo_mkt?: number | null
-          outros_custos?: number | null
-          created_at?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          id?: number
-          filial_id?: number | null
-          data?: string | null
-          valor_venda?: number | null
-          custo_lentes?: number | null
-          custo_armacoes?: number | null
-          custo_mkt?: number | null
-          outros_custos?: number | null
-          created_at?: string | null
-          updated_at?: string | null
-        }
-      }
-      filiais: {
-        Row: {
-          id: number
-          nome: string | null
-          endereco: string | null
-          telefone: string | null
-          created_at: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          nome?: string | null
-          endereco?: string | null
-          telefone?: string | null
-          created_at?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          id?: number
-          nome?: string | null
-          endereco?: string | null
-          telefone?: string | null
-          created_at?: string | null
-          updated_at?: string | null
-        }
-      }
-      fornecedores: {
-        Row: {
-          id: number
-          nome: string | null
-          tipo_id: number | null
-          contato: string | null
-          telefone: string | null
-          email: string | null
-          created_at: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          nome?: string | null
-          tipo_id?: number | null
-          contato?: string | null
-          telefone?: string | null
-          email?: string | null
-          created_at?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          id?: number
-          nome?: string | null
-          tipo_id?: number | null
-          contato?: string | null
-          telefone?: string | null
-          email?: string | null
-          created_at?: string | null
-          updated_at?: string | null
-        }
-      }
-      tipos_fornecedores: {
-        Row: {
-          id: number
-          nome: string | null
-          descricao: string | null
-          created_at: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          nome?: string | null
-          descricao?: string | null
-          created_at?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          id?: number
-          nome?: string | null
-          descricao?: string | null
-          created_at?: string | null
-          updated_at?: string | null
-        }
-      }
-      titulos: {
-        Row: {
-          id: number
-          tipo: string | null
-          fornecedor_id: number | null
-          filial_id: number | null
-          data_emissao: string | null
-          vencimento: string | null
-          pagamento: string | null
-          valor: number | null
-          status: string | null
-          observacoes: string | null
-          created_at: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          tipo?: string | null
-          fornecedor_id?: number | null
-          filial_id?: number | null
-          data_emissao?: string | null
-          vencimento?: string | null
-          pagamento?: string | null
-          valor?: number | null
-          status?: string | null
-          observacoes?: string | null
-          created_at?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          id?: number
-          tipo?: string | null
-          fornecedor_id?: number | null
-          filial_id?: number | null
-          data_emissao?: string | null
-          vencimento?: string | null
-          pagamento?: string | null
-          valor?: number | null
-          status?: string | null
-          observacoes?: string | null
-          created_at?: string | null
-          updated_at?: string | null
-        }
-      }
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      [_ in never]: never
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
+export interface FilialType {
+  id: number;
+  nome: string | null;
+  endereco: string | null;
+  telefone: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface FornecedorType {
+  id: number;
+  nome: string | null;
+  tipo_id: number | null;
+  contato: string | null;
+  telefone: string | null;
+  email: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface TipoFornecedorType {
+  id: number;
+  nome: string | null;
+  descricao: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface TituloType {
+  id: number;
+  tipo: string | null;
+  fornecedor_id: number | null;
+  filial_id: number | null;
+  data_emissao: string | null;
+  vencimento: string | null;
+  pagamento: string | null;
+  valor: number | null;
+  status: string | null;
+  observacoes: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 }

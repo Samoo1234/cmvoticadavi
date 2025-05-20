@@ -1,7 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://tudmimjtwetyqyumkodf.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR1ZG1pbWp0d2V0eXF5dW1rb2RmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcwNzM3MzcsImV4cCI6MjA2MjY0OTczN30.vPlgtgul4p-JNVy5BW5nXOBI0hGfU97IYwI_e4Q_-eo';
+// Usar variáveis de ambiente do arquivo .env
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+// Verificar se as variáveis de ambiente estão definidas
+if (!supabaseUrl || !supabaseKey) {
+  console.error('Variáveis de ambiente do Supabase não definidas!');
+}
 
 // Configuração do cliente Supabase com interceptors de erro
 export const supabase = createClient(supabaseUrl, supabaseKey, {

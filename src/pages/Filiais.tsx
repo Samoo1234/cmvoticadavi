@@ -12,7 +12,9 @@ import {
   ListItemText, 
   ListItemSecondaryAction, 
   Checkbox, 
-  CircularProgress
+  CircularProgress,
+  Snackbar,
+  Alert
 } from '@mui/material';
 // Removendo importação não utilizada
 import EditIcon from '@mui/icons-material/Edit';
@@ -437,6 +439,20 @@ const Filiais: React.FC = () => {
           </Card>
         </Box>
       </Box>
+      
+      {/* Snackbar para exibir alertas */}
+      <Snackbar 
+        open={alert.open} 
+        autoHideDuration={6000} 
+        onClose={() => setAlert({ ...alert, open: false })}
+      >
+        <Alert 
+          onClose={() => setAlert({ ...alert, open: false })} 
+          severity={alert.severity}
+        >
+          {alert.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

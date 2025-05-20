@@ -223,8 +223,9 @@ const EmissaoTitulos: React.FC = () => {
     }
   };
   
-  const handleEdit = (id: number) => { 
-    // Implementação futura
+  // Função para edição será implementada no futuro
+  const handleEdit = (_id: number) => { 
+    // Prefixo com underscore indica que o parâmetro é intencionalmente não utilizado
   };
   
   const handleDelete = async (id: number) => {

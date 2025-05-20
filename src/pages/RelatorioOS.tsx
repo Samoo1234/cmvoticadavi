@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Card, CardContent, Grid, TextField, Button, List, ListItem, ListItemText, MenuItem, Divider, CircularProgress } from '@mui/material';
+import { Box, Typography, Card, CardContent, Grid, TextField, Button, List, ListItem, ListItemText, MenuItem, Divider, CircularProgress, FormControl, InputLabel, Select } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
 import { filiaisService } from '../services/filiaisService';
 import type { Filial } from '../services/filiaisService';
@@ -219,39 +220,39 @@ const RelatorioOS: React.FC = () => {
       <Card sx={{ mb: 3 }} className="no-print">
         <CardContent>
           <Typography variant="h6" gutterBottom>Filtros</Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={4} md={3}>
-              <TextField 
-                select 
-                label="Filial" 
-                name="filial" 
-                value={filtros.filial} 
-                onChange={handleFiltroChange} 
-                fullWidth
-                disabled={carregandoFiliais}
-              >
-                <MenuItem value="">Todas</MenuItem>
-                {carregandoFiliais ? (
-                  <MenuItem disabled>
-                    <Box display="flex" alignItems="center">
-                      <CircularProgress size={20} sx={{ mr: 1 }} />
-                      Carregando filiais...
-                    </Box>
-                  </MenuItem>
-                ) : (
-                  filiais.map(filial => 
-                    <MenuItem key={filial.id} value={filial.nome}>{filial.nome}</MenuItem>
-                  )
-                )}
-              </TextField>
+          <Grid container spacing={2} sx={{ mt: 2 }}>
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth>
+                <InputLabel id="filial-label">Filial</InputLabel>
+                <Select
+                  labelId="filial-label"
+                  value={filtros.filial}
+                  label="Filial"
+                  onChange={(e) => setFiltros({ ...filtros, filial: e.target.value as string })}
+                >
+                  <MenuItem value="">Todas</MenuItem>
+                  {carregandoFiliais ? (
+                    <MenuItem disabled>
+                      <Box display="flex" alignItems="center">
+                        <CircularProgress size={20} sx={{ mr: 1 }} />
+                        Carregando filiais...
+                      </Box>
+                    </MenuItem>
+                  ) : (
+                    filiais.map(filial => 
+                      <MenuItem key={filial.id} value={filial.nome}>{filial.nome}</MenuItem>
+                    )
+                  )}
+                </Select>
+              </FormControl>
             </Grid>
-            <Grid item xs={12} sm={4} md={3}>
+            <Grid item xs={12} sm={6} md={3}>
               <TextField label="Data Inicial" name="dataInicial" type="date" value={filtros.dataInicial} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth />
             </Grid>
-            <Grid item xs={12} sm={4} md={3}>
+            <Grid item xs={12} sm={6} md={3}>
               <TextField label="Data Final" name="dataFinal" type="date" value={filtros.dataFinal} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth />
             </Grid>
-            <Grid item xs={12} sm={12} md={3} sx={{ display: "flex", alignItems: "center" }}>
+            <Grid item xs={12} sm={6} md={3} sx={{ display: "flex", alignItems: "center" }}>
               <Button variant="outlined" startIcon={<PrintIcon />} onClick={handleImprimir} sx={{ mt: { xs: 2, md: 0 } }}>
                 Imprimir Relatório
               </Button>
@@ -283,17 +284,17 @@ const RelatorioOS: React.FC = () => {
           )}
           <Divider sx={{ my: 2 }} />
           <Typography variant="subtitle1" className="totais-indicadores"><b>Totais e Indicadores</b></Typography>
-          <Grid container spacing={2} sx={{ mt: 1 }} className="totais-indicadores">
-            <Grid item xs={12} sm={6} md={4}>Valor total das vendas: <b>R$ {totalVendas.toFixed(2)}</b></Grid>
-            <Grid item xs={12} sm={6} md={4}>Custo total das lentes: <b>R$ {totalLentes.toFixed(2)}</b></Grid>
-            <Grid item xs={12} sm={6} md={4}>Custo total das armações: <b>R$ {totalArmacoes.toFixed(2)}</b></Grid>
-            <Grid item xs={12} sm={6} md={4}>Custo total do MKT: <b>R$ {totalMkt.toFixed(2)}</b></Grid>
-            <Grid item xs={12} sm={6} md={4}>Custo total "outros": <b>R$ {totalOutros.toFixed(2)}</b></Grid>
-            <Grid item xs={12} sm={6} md={4}>Margem bruta: <b>R$ {margemBruta.toFixed(2)}</b></Grid>
-            <Grid item xs={12} sm={6} md={4}>Total de OS: <b>{totalOS}</b></Grid>
-            <Grid item xs={12} sm={6} md={4}>Total de armações: <b>{totalArmacoesQtd}</b></Grid>
-            <Grid item xs={12} sm={6} md={4}>Margem média por OS: <b>R$ {margemMedia.toFixed(2)}</b></Grid>
-          </Grid>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, mt: 1 }} className="totais-indicadores">
+            <Box>Valor total das vendas: <b>R$ {totalVendas.toFixed(2)}</b></Box>
+            <Box>Custo total das lentes: <b>R$ {totalLentes.toFixed(2)}</b></Box>
+            <Box>Custo total das armações: <b>R$ {totalArmacoes.toFixed(2)}</b></Box>
+            <Box>Custo total do MKT: <b>R$ {totalMkt.toFixed(2)}</b></Box>
+            <Box>Custo total "outros": <b>R$ {totalOutros.toFixed(2)}</b></Box>
+            <Box>Margem bruta: <b>R$ {margemBruta.toFixed(2)}</b></Box>
+            <Box>Total de OS: <b>{totalOS}</b></Box>
+            <Box>Total de armações: <b>{totalArmacoesQtd}</b></Box>
+            <Box>Margem média por OS: <b>R$ {margemMedia.toFixed(2)}</b></Box>
+          </Box>
         </CardContent>
       </Card>
     </Box>

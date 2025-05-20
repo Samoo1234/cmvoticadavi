@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Card, CardContent, Grid, TextField, Button, List, ListItem, ListItemText, MenuItem, Divider, CircularProgress, FormControl, InputLabel, Select } from '@mui/material';
-import type { SelectChangeEvent } from '@mui/material';
+import { Box, Typography, Card, CardContent, TextField, Button, List, ListItem, ListItemText, MenuItem, Divider, CircularProgress, FormControl, InputLabel, Select } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
 import { filiaisService } from '../services/filiaisService';
 import type { Filial } from '../services/filiaisService';
@@ -220,15 +219,15 @@ const RelatorioOS: React.FC = () => {
       <Card sx={{ mb: 3 }} className="no-print">
         <CardContent>
           <Typography variant="h6" gutterBottom>Filtros</Typography>
-          <Grid container spacing={2} sx={{ mt: 2 }}>
-            <Grid item xs={12} sm={6} md={3}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 2 }}>
+            <Box sx={{ flex: '1 1 300px', minWidth: '250px' }}>
               <FormControl fullWidth>
                 <InputLabel id="filial-label">Filial</InputLabel>
                 <Select
                   labelId="filial-label"
                   value={filtros.filial}
                   label="Filial"
-                  onChange={(e) => setFiltros({ ...filtros, filial: e.target.value as string })}
+                  onChange={(e) => setFiltros({ ...filtros, filial: e.target.value })}
                 >
                   <MenuItem value="">Todas</MenuItem>
                   {carregandoFiliais ? (
@@ -245,19 +244,19 @@ const RelatorioOS: React.FC = () => {
                   )}
                 </Select>
               </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+            </Box>
+            <Box sx={{ flex: '1 1 300px', minWidth: '250px' }}>
               <TextField label="Data Inicial" name="dataInicial" type="date" value={filtros.dataInicial} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+            </Box>
+            <Box sx={{ flex: '1 1 300px', minWidth: '250px' }}>
               <TextField label="Data Final" name="dataFinal" type="date" value={filtros.dataFinal} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3} sx={{ display: "flex", alignItems: "center" }}>
+            </Box>
+            <Box sx={{ flex: '1 1 300px', minWidth: '250px', display: "flex", alignItems: "center" }}>
               <Button variant="outlined" startIcon={<PrintIcon />} onClick={handleImprimir} sx={{ mt: { xs: 2, md: 0 } }}>
                 Imprimir Relatório
               </Button>
-            </Grid>
-          </Grid>
+            </Box>
+          </Box>
         </CardContent>
       </Card>
       <Card className="print-only">

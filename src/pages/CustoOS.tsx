@@ -131,7 +131,7 @@ const CustoOS: React.FC = () => {
       if (editId) {
         resultado = await custoOSService.update(editId, custoOSData);
         if (resultado) {
-          setOsList(osList.map(os => os.id === editId ? resultado : os));
+          setOsList(osList.map(os => os?.id === editId ? resultado : os).filter((os): os is CustoOS => os !== null));
           setAlert({
             open: true,
             message: 'Custo de OS atualizado com sucesso!',
@@ -142,9 +142,7 @@ const CustoOS: React.FC = () => {
         resultado = await custoOSService.create(custoOSData);
         if (resultado) {
           // Garantir que resultado não seja null antes de adicionar à lista
-          if (resultado) {
-            setOsList([...osList, resultado]);
-          }
+          setOsList([...osList.filter((os): os is CustoOS => os !== null), resultado]);
           setAlert({
             open: true,
             message: 'Custo de OS adicionado com sucesso!',

@@ -12,10 +12,7 @@ import {
   ListItemText, 
   ListItemSecondaryAction, 
   Checkbox, 
-  CircularProgress, 
-  Snackbar, 
-  Alert,
-  Grid
+  CircularProgress
 } from '@mui/material';
 // Removendo importação não utilizada
 import EditIcon from '@mui/icons-material/Edit';
@@ -245,9 +242,9 @@ const Filiais: React.FC = () => {
         Cadastro de Filiais
       </Typography>
       
-      <Grid container spacing={3}>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
         {/* Formulário */}
-        <Grid item xs={12} md={6}>
+        <Box sx={{ flex: '1 1 400px', minWidth: '300px' }}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -331,10 +328,10 @@ const Filiais: React.FC = () => {
               </Box>
             </CardContent>
           </Card>
-        </Grid>
+        </Box>
         
         {/* Lista de Filiais */}
-        <Grid item xs={12} md={6}>
+        <Box sx={{ flex: '1 1 400px', minWidth: '300px' }}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -438,8 +435,8 @@ const Filiais: React.FC = () => {
               )}
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
     </Box>
   );
 };

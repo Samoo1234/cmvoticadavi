@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { formatDateToBrazilian } from '../utils/dateUtils';
-import { Box, Typography, Card, CardContent, Grid, TextField, Button, IconButton, List, ListItem, ListItemText, ListItemSecondaryAction, MenuItem, Stack, CircularProgress, Snackbar, Alert } from '@mui/material';
+import { Box, Typography, Card, CardContent, TextField, Button, IconButton, List, ListItem, ListItemText, ListItemSecondaryAction, MenuItem, Stack, CircularProgress, Snackbar, Alert } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PaymentIcon from '@mui/icons-material/Payment';
@@ -419,8 +419,8 @@ const EmissaoTitulos: React.FC = () => {
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>Filtros</Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6} md={2}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
               <TextField select label="Tipo" name="tipo" value={filtros.tipo} onChange={handleFiltroChange} fullWidth>
                 <MenuItem value="">Todos</MenuItem>
                 {tipos.length === 0 ? (
@@ -429,8 +429,8 @@ const EmissaoTitulos: React.FC = () => {
                   tipos.map(tipo => <MenuItem key={tipo.id} value={tipo.nome}>{tipo.nome}</MenuItem>)
                 )}
               </TextField>
-            </Grid>
-            <Grid item xs={12} sm={6} md={2}>
+            </Box>
+            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
               <TextField select label="Fornecedor" name="fornecedor" value={filtros.fornecedor} onChange={handleFiltroChange} fullWidth>
                 <MenuItem value="">Todos</MenuItem>
                 {fornecedores.length === 0 ? (
@@ -439,8 +439,8 @@ const EmissaoTitulos: React.FC = () => {
                   fornecedores.map(fornecedor => <MenuItem key={fornecedor.id} value={fornecedor.nome}>{fornecedor.nome}</MenuItem>)
                 )}
               </TextField>
-            </Grid>
-            <Grid item xs={12} sm={6} md={2}>
+            </Box>
+            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
               <TextField select label="Filial" name="filial" value={filtros.filial} onChange={handleFiltroChange} fullWidth>
                 <MenuItem value="">Todas</MenuItem>
                 {filiais.length === 0 ? (
@@ -449,20 +449,20 @@ const EmissaoTitulos: React.FC = () => {
                   filiais.map(filial => <MenuItem key={filial.id} value={filial.nome}>{filial.nome}</MenuItem>)
                 )}
               </TextField>
-            </Grid>
-            <Grid item xs={12} sm={6} md={2}>
+            </Box>
+            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
               <TextField label="Dt. Vencimento" name="vencimento" type="date" value={filtros.vencimento} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth />
-            </Grid>
-            <Grid item xs={12} sm={6} md={2}>
+            </Box>
+            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
               <TextField label="Dt. Pagamento" name="pagamento" type="date" value={filtros.pagamento} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth />
-            </Grid>
-            <Grid item xs={12} sm={6} md={2}>
+            </Box>
+            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
               <Stack direction="row" spacing={1}>
                 <TextField label="Data Inicial" name="dataInicial" type="date" value={filtros.dataInicial} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth />
                 <TextField label="Data Final" name="dataFinal" type="date" value={filtros.dataFinal} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth />
               </Stack>
-            </Grid>
-          </Grid>
+            </Box>
+          </Box>
         </CardContent>
       </Card>
       <Card>

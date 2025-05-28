@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+// Removemos as importações de jsPDF que estavam causando problemas
 import { 
   Box, 
   Typography, 
@@ -36,14 +37,11 @@ import type { Despesa, DespesaCompleta, CategoriaDespesa } from '../services/des
 import { filiaisService } from '../services/filiaisService';
 import { formatDateToBrazilian } from '../utils/dateUtils';
 
-// Estilos para impressão
+// Estilos CSS para impressão
 const printStyles = `
   @media print {
-    body * {
-      visibility: visible;
-    }
-    
-    #header, #sidebar, #filter-section, #print-button, .action-buttons, .MuiListItemSecondaryAction-root {
+    /* Ocultar elementos que não devem ser impressos */
+    nav, header, footer, .MuiAppBar-root, .MuiDrawer-root, .no-print {
       display: none !important;
     }
     
@@ -199,21 +197,210 @@ const ExtratoDespesas: React.FC = () => {
     });
   };
   
-  // Função para imprimir relatório
+  // Função para gerar e imprimir relatório em formato tabular
   const handleImprimir = () => {
-    // Adicionar estilos de impressão
-    const styleElement = document.createElement('style');
-    styleElement.innerHTML = printStyles;
-    document.head.appendChild(styleElement);
+    // Criar uma nova janela para o relatório
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('O navegador bloqueou a abertura da janela de impressão. Por favor, permita popups para este site.');
+      return;
+    }
     
-    // Acionar a impressão
-    window.print();
+    // Preparar os dados das despesas fixas e variáveis
+    const despesasFixas = despesas.filter(d => d.tipo_despesa === 'fixa');
+    const despesasVariaveis = despesas.filter(d => d.tipo_despesa === 'variavel');
     
-    // Remover estilos após a impressão
-    setTimeout(() => {
-      document.head.removeChild(styleElement);
-    }, 1000);
+    // Gerar HTML para o relatório
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Relatório de Despesas</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            color: #333;
+          }
+          h1, h2 {
+            text-align: center;
+            margin-bottom: 10px;
+          }
+          h3 {
+            margin-top: 20px;
+            margin-bottom: 10px;
+          }
+          .periodo {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 14px;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+          }
+          th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+            font-size: 12px;
+          }
+          th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+          }
+          tr:nth-child(even) {
+            background-color: #f9f9f9;
+          }
+          .resumo {
+            margin-top: 30px;
+            border-top: 2px solid #333;
+            padding-top: 10px;
+          }
+          .resumo-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+          }
+          .total-geral {
+            font-weight: bold;
+            margin-top: 10px;
+            padding-top: 5px;
+            border-top: 1px solid #333;
+          }
+          .observacao {
+            font-style: italic;
+            font-size: 11px;
+          }
+          .valor {
+            text-align: right;
+          }
+          .filtros {
+            margin-bottom: 20px;
+            font-size: 12px;
+          }
+          .print-button {
+            display: block;
+            margin: 20px auto;
+            padding: 8px 16px;
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+          }
+          @media print {
+            .print-button {
+              display: none;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Relatório de Despesas</h1>
+        <div class="periodo">Período: ${formatDateToBrazilian(filtros.dataInicial)} a ${formatDateToBrazilian(filtros.dataFinal)}</div>
+        
+        <div class="filtros">
+          <strong>Filtros Aplicados:</strong> 
+          ${filtros.tipoDespesa ? `Tipo: ${filtros.tipoDespesa === 'fixa' ? 'Fixas' : 'Variáveis'}, ` : ''}
+          ${filtros.filial ? `Filial: ${filiais.find(f => f.id === Number(filtros.filial))?.nome || filtros.filial}, ` : ''}
+          ${filtros.categoria ? `Categoria: ${categorias.find(c => c.id === Number(filtros.categoria))?.nome || filtros.categoria}, ` : ''}
+          ${filtros.status ? `Status: ${filtros.status}, ` : ''}
+        </div>
+        
+        ${despesasFixas.length > 0 ? `
+        <h3>Despesas Fixas</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Filial</th>
+              <th>Categoria</th>
+              <th>Valor</th>
+              <th>Vencimento</th>
+              <th>Status</th>
+              <th>Observações</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${despesasFixas.map(d => `
+              <tr>
+                <td>${d.nome}</td>
+                <td>${d.filial || 'Não especificado'}</td>
+                <td>${d.categoria || 'Não categorizado'}</td>
+                <td class="valor">R$ ${parseFloat(String(d.valor)).toFixed(2)}</td>
+                <td>${d.data_vencimento ? formatDateToBrazilian(String(d.data_vencimento)) : (d.dia_vencimento ? `Dia ${d.dia_vencimento} de cada mês` : 'Não informado')}</td>
+                <td>${d.status === 'pago' ? 'Pago' : (d.status === 'pendente' ? 'Pendente' : (d.status === 'ativo' ? 'Ativo' : 'Inativo'))}</td>
+                <td>${d.observacao || ''}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ` : ''}
+        
+        ${despesasVariaveis.length > 0 ? `
+        <h3>Despesas Variáveis</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Filial</th>
+              <th>Categoria</th>
+              <th>Valor</th>
+              <th>Data</th>
+              <th>Status</th>
+              <th>Observações</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${despesasVariaveis.map(d => `
+              <tr>
+                <td>${d.nome}</td>
+                <td>${d.filial || 'Não especificado'}</td>
+                <td>${d.categoria || 'Não categorizado'}</td>
+                <td class="valor">R$ ${parseFloat(String(d.valor)).toFixed(2)}</td>
+                <td>${formatDateToBrazilian(String(d.data_despesa))}</td>
+                <td>${d.status === 'pago' ? 'Pago' : 'Pendente'}</td>
+                <td>${d.observacao || ''}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ` : ''}
+        
+        <div class="resumo">
+          <h3>Resumo do Período</h3>
+          <div class="resumo-item">
+            <span>Total Despesas Fixas:</span>
+            <span>R$ ${totalDespesasFixas.toFixed(2)}</span>
+          </div>
+          <div class="resumo-item">
+            <span>Total Despesas Variáveis:</span>
+            <span>R$ ${totalDespesasVariaveis.toFixed(2)}</span>
+          </div>
+          <div class="resumo-item total-geral">
+            <span>Total Geral:</span>
+            <span>R$ ${(totalDespesasFixas + totalDespesasVariaveis).toFixed(2)}</span>
+          </div>
+        </div>
+        
+        <button class="print-button" onclick="window.print()">Imprimir</button>
+      </body>
+      </html>
+    `;
+    
+    // Escrever o HTML na nova janela
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    
+    // Focar na nova janela
+    printWindow.focus();
   };
+  
+  // Removemos a função de exportação de PDF que utilizava jsPDF
   
   // Funções para ações nas despesas
   const handlePagamento = (despesa: DespesaCompleta) => {
@@ -438,11 +625,12 @@ const ExtratoDespesas: React.FC = () => {
             
             <Box sx={{ flex: '1 1 200px', display: 'flex', alignItems: 'center' }}>
               <Button 
-                variant="outlined" 
+                variant="contained" 
+                color="primary"
                 startIcon={<PrintIcon />} 
                 onClick={handleImprimir}
               >
-                Imprimir Relatório
+                Gerar Relatório
               </Button>
             </Box>
           </Box>
@@ -491,7 +679,7 @@ const ExtratoDespesas: React.FC = () => {
                               </>
                             }
                           />
-                          <ListItemSecondaryAction className="action-buttons">
+                          <ListItemSecondaryAction>
                             <Box sx={{ display: 'flex', gap: 1 }}>
                               <Tooltip title={despesa.status === 'pago' || despesa.status === 'inativo' ? 'Já pago/inativo' : 'Marcar como pago'}>
                                 <span>
@@ -538,7 +726,7 @@ const ExtratoDespesas: React.FC = () => {
                               </>
                             }
                           />
-                          <ListItemSecondaryAction className="action-buttons">
+                          <ListItemSecondaryAction>
                             <Box sx={{ display: 'flex', gap: 1 }}>
                               <Tooltip title={despesa.status === 'pago' ? 'Já pago' : 'Marcar como pago'}>
                                 <span>

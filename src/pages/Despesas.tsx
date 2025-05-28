@@ -53,12 +53,12 @@ const Despesas: React.FC = () => {
     valor: '',
     categoria_id: null,
     filial_id: null,
-    tipo_despesa: 'variavel',
+    tipo_despesa: 'fixa',
     data_despesa: new Date().toISOString().slice(0, 10),
     data_pagamento: '',
     data_vencimento: new Date().toISOString().slice(0, 10),
     forma_pagamento: '',
-    status: 'pendente',
+    status: 'ativo',
     observacao: ''
   });
 

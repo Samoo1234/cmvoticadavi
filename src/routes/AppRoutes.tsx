@@ -18,6 +18,8 @@ const AppRoutes: React.FC = () => (
         <Route path="/tipos-fornecedores" element={<TiposFornecedores />} />
         <Route path="/fornecedores" element={<Fornecedores />} />
         <Route path="/titulos" element={<Titulos />} />
+        <Route path="/extrato-titulos" element={<EmissaoTitulos />} />
+        {/* Mantendo a rota antiga para compatibilidade */}
         <Route path="/emissao-titulos" element={<EmissaoTitulos />} />
         <Route path="/custo-os" element={<CustoOS />} />
         <Route path="/relatorio-os" element={<RelatorioOS />} />

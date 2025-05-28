@@ -36,11 +36,14 @@ import type { Despesa, DespesaCompleta, CategoriaDespesa } from '../services/des
 import { filiaisService } from '../services/filiaisService';
 import { formatDateToBrazilian } from '../utils/dateUtils';
 
-// Estilos CSS para impressão
+// Estilos para impressão
 const printStyles = `
   @media print {
-    /* Ocultar elementos que não devem ser impressos */
-    nav, header, footer, .MuiAppBar-root, .MuiDrawer-root, .no-print {
+    body * {
+      visibility: visible;
+    }
+    
+    #header, #sidebar, #filter-section, #print-button, .action-buttons, .MuiListItemSecondaryAction-root {
       display: none !important;
     }
     
@@ -488,7 +491,7 @@ const ExtratoDespesas: React.FC = () => {
                               </>
                             }
                           />
-                          <ListItemSecondaryAction>
+                          <ListItemSecondaryAction className="action-buttons">
                             <Box sx={{ display: 'flex', gap: 1 }}>
                               <Tooltip title={despesa.status === 'pago' || despesa.status === 'inativo' ? 'Já pago/inativo' : 'Marcar como pago'}>
                                 <span>
@@ -535,7 +538,7 @@ const ExtratoDespesas: React.FC = () => {
                               </>
                             }
                           />
-                          <ListItemSecondaryAction>
+                          <ListItemSecondaryAction className="action-buttons">
                             <Box sx={{ display: 'flex', gap: 1 }}>
                               <Tooltip title={despesa.status === 'pago' ? 'Já pago' : 'Marcar como pago'}>
                                 <span>

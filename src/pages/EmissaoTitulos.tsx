@@ -22,7 +22,10 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  InputAdornment
+  InputAdornment,
+  FormControlLabel,
+  Checkbox,
+  FormGroup
 } from '@mui/material';
 
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -59,7 +62,8 @@ interface TituloCompleto extends Titulo {
 const EmissaoTitulos: React.FC = () => {
   const [titulos, setTitulos] = useState<TituloCompleto[]>([]);
   const [titulosFiltrados, setTitulosFiltrados] = useState<TituloCompleto[]>([]);
-  const [filtros, setFiltros] = useState({ tipo: '', fornecedor: '', filial: '', vencimento: '', pagamento: '', dataInicial: '', dataFinal: '' });
+  const [filtros, setFiltros] = useState({ tipo: '', fornecedor: '', filial: '', dataInicial: '', dataFinal: '' });
+  const [filtroTipo, setFiltroTipo] = useState({ vencimento: false, pagamento: false, todos: true });
   const [tipos, setTipos] = useState<{ id: number, nome: string }[]>([]);
   const [fornecedores, setFornecedores] = useState<{ id: number, nome: string }[]>([]);
   const [filiais, setFiliais] = useState<{ id: number, nome: string }[]>([]);
@@ -156,10 +160,29 @@ const EmissaoTitulos: React.FC = () => {
   const handleFiltroChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const novosFiltros = { ...filtros, [e.target.name]: e.target.value };
     setFiltros(novosFiltros);
-    aplicarFiltros(novosFiltros);
+    aplicarFiltros(novosFiltros, filtroTipo);
   };
 
-  const aplicarFiltros = (filtrosAtuais = filtros) => {
+  const handleFiltroTipoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, checked } = e.target;
+    
+    // Se algum tipo for marcado, desmarca os outros
+    const novoFiltroTipo = {
+      vencimento: name === 'vencimento' ? checked : false,
+      pagamento: name === 'pagamento' ? checked : false,
+      todos: name === 'todos' ? checked : false
+    };
+    
+    // Se todos forem desmarcados, ativa o 'todos'
+    if (!novoFiltroTipo.vencimento && !novoFiltroTipo.pagamento && !novoFiltroTipo.todos) {
+      novoFiltroTipo.todos = true;
+    }
+    
+    setFiltroTipo(novoFiltroTipo);
+    aplicarFiltros(filtros, novoFiltroTipo);
+  };
+
+  const aplicarFiltros = (filtrosAtuais = filtros, tiposFiltro = filtroTipo) => {
     let resultado = [...titulos];
     
     // Filtrar por tipo
@@ -177,36 +200,38 @@ const EmissaoTitulos: React.FC = () => {
       resultado = resultado.filter(titulo => titulo.filial === filtrosAtuais.filial);
     }
     
-    // Filtrar por data de vencimento
-    if (filtrosAtuais.vencimento) {
-      resultado = resultado.filter(titulo => titulo.vencimento === filtrosAtuais.vencimento);
+    // Filtrar por período (data inicial e final) baseado no tipo de filtro selecionado
+    if (filtrosAtuais.dataInicial || filtrosAtuais.dataFinal) {
+      // Apenas aplica o filtro se não estiver no modo "todos"
+      if (!tiposFiltro.todos) {
+        const dataInicial = filtrosAtuais.dataInicial ? new Date(filtrosAtuais.dataInicial) : null;
+        const dataFinal = filtrosAtuais.dataFinal ? new Date(filtrosAtuais.dataFinal) : null;
+        
+        resultado = resultado.filter(titulo => {
+          // Determina qual campo de data usar baseado no tipo de filtro
+          const dataCampo = tiposFiltro.vencimento 
+            ? new Date(titulo.vencimento) 
+            : tiposFiltro.pagamento && titulo.pagamento 
+              ? new Date(titulo.pagamento) 
+              : null;
+          
+          // Se não tiver a data necessária ou for nula, não passa no filtro
+          if (!dataCampo) {
+            return tiposFiltro.pagamento ? false : true; // Se for filtro de pagamento, só mostra os pagos
+          }
+          
+          // Aplica o filtro baseado nas datas fornecidas
+          const passaFiltroInicial = !dataInicial || dataCampo >= dataInicial;
+          const passaFiltroFinal = !dataFinal || dataCampo <= dataFinal;
+          
+          return passaFiltroInicial && passaFiltroFinal;
+        });
+      }
     }
     
-    // Filtrar por data de pagamento
-    if (filtrosAtuais.pagamento) {
-      resultado = resultado.filter(titulo => titulo.pagamento === filtrosAtuais.pagamento);
-    }
-    
-    // Filtrar por período (data inicial e final)
-    if (filtrosAtuais.dataInicial && filtrosAtuais.dataFinal) {
-      resultado = resultado.filter(titulo => {
-        const dataVencimento = new Date(titulo.vencimento);
-        const dataInicial = new Date(filtrosAtuais.dataInicial);
-        const dataFinal = new Date(filtrosAtuais.dataFinal);
-        return dataVencimento >= dataInicial && dataVencimento <= dataFinal;
-      });
-    } else if (filtrosAtuais.dataInicial) {
-      resultado = resultado.filter(titulo => {
-        const dataVencimento = new Date(titulo.vencimento);
-        const dataInicial = new Date(filtrosAtuais.dataInicial);
-        return dataVencimento >= dataInicial;
-      });
-    } else if (filtrosAtuais.dataFinal) {
-      resultado = resultado.filter(titulo => {
-        const dataVencimento = new Date(titulo.vencimento);
-        const dataFinal = new Date(filtrosAtuais.dataFinal);
-        return dataVencimento <= dataFinal;
-      });
+    // Se o filtro for por pagamento, só mostra títulos pagos
+    if (tiposFiltro.pagamento && !tiposFiltro.todos) {
+      resultado = resultado.filter(titulo => titulo.pagamento !== null && titulo.pagamento !== '');
     }
     
     setTitulosFiltrados(resultado);
@@ -480,8 +505,9 @@ const EmissaoTitulos: React.FC = () => {
           ${filtros.tipo ? `<div class="filtro-item">Tipo: ${filtros.tipo}</div>` : ''}
           ${filtros.fornecedor ? `<div class="filtro-item">Fornecedor: ${filtros.fornecedor}</div>` : ''}
           ${filtros.filial ? `<div class="filtro-item">Filial: ${filtros.filial}</div>` : ''}
-          ${filtros.vencimento ? `<div class="filtro-item">Vencimento: ${filtros.vencimento}</div>` : ''}
-          ${filtros.pagamento ? `<div class="filtro-item">Pagamento: ${filtros.pagamento}</div>` : ''}
+          ${filtroTipo.vencimento ? `<div class="filtro-item">Filtro: Por Data de Vencimento</div>` : ''}
+          ${filtroTipo.pagamento ? `<div class="filtro-item">Filtro: Por Data de Pagamento</div>` : ''}
+          ${filtroTipo.todos ? `<div class="filtro-item">Filtro: Todas as Datas</div>` : ''}
           ${filtros.dataInicial ? `<div class="filtro-item">Data Inicial: ${filtros.dataInicial}</div>` : ''}
           ${filtros.dataFinal ? `<div class="filtro-item">Data Final: ${filtros.dataFinal}</div>` : ''}
         </div>
@@ -731,15 +757,43 @@ const EmissaoTitulos: React.FC = () => {
               </TextField>
             </Box>
             <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
-              <TextField label="Dt. Vencimento" name="vencimento" type="date" value={filtros.vencimento} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth />
+              <FormGroup row>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={filtroTipo.vencimento}
+                      onChange={handleFiltroTipoChange}
+                      name="vencimento"
+                    />
+                  }
+                  label="Dt. Vencimento"
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={filtroTipo.pagamento}
+                      onChange={handleFiltroTipoChange}
+                      name="pagamento"
+                    />
+                  }
+                  label="Dt. Pagamento"
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={filtroTipo.todos}
+                      onChange={handleFiltroTipoChange}
+                      name="todos"
+                    />
+                  }
+                  label="Todas as Datas"
+                />
+              </FormGroup>
             </Box>
-            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
-              <TextField label="Dt. Pagamento" name="pagamento" type="date" value={filtros.pagamento} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth />
-            </Box>
-            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
+            <Box sx={{ flex: '1 1 400px', minWidth: '300px' }}>
               <Stack direction="row" spacing={1}>
-                <TextField label="Data Inicial" name="dataInicial" type="date" value={filtros.dataInicial} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth />
-                <TextField label="Data Final" name="dataFinal" type="date" value={filtros.dataFinal} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth />
+                <TextField label="Data Inicial" name="dataInicial" type="date" value={filtros.dataInicial} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth disabled={filtroTipo.todos} />
+                <TextField label="Data Final" name="dataFinal" type="date" value={filtros.dataFinal} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth disabled={filtroTipo.todos} />
               </Stack>
             </Box>
           </Box>

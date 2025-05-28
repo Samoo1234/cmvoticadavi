@@ -108,14 +108,18 @@ const RelatorioOS: React.FC = () => {
     buscarFiliais();
   }, []);
   
-  // Efeito para buscar os dados de custos_os quando o componente montar
+  // Efeito para buscar os dados de custos_os quando o mapa de filiais estiver pronto
   useEffect(() => {
-    buscarDados();
-  }, []);
+    if (filialMap.size > 0) {
+      buscarDados();
+    }
+  }, [filialMap]);
   
   // Efeito para buscar os dados quando os filtros mudarem
   useEffect(() => {
-    buscarDados();
+    if (filialMap.size > 0) {
+      buscarDados();
+    }
   }, [filtros]);
 
   // Função para buscar dados com base nos filtros
@@ -156,7 +160,19 @@ const RelatorioOS: React.FC = () => {
       
       // Mapear os dados para o formato usado no componente
       const osData = custosData.map(custo => {
-        const filialNome = filialMap.get(custo.filial_id) || `Filial ID: ${custo.filial_id}`;
+        // Buscar o nome da filial no mapa ou tentar obter da API se necessário
+        let filialNome = filialMap.get(custo.filial_id);
+        
+        // Se o nome não for encontrado, garantir que estamos usando o nome completo
+        if (!filialNome) {
+          const filial = filiais.find(f => f.id === custo.filial_id);
+          filialNome = filial ? filial.nome : `Filial ${custo.filial_id}`;
+          
+          // Atualizar o mapa para futuras referências
+          if (filial && filial.id !== undefined) {
+            setFilialMap(new Map(filialMap.set(filial.id, filial.nome)));
+          }
+        }
         return mapCustoOSToOS(custo, filialNome);
       });
       

@@ -80,12 +80,14 @@ const Despesas: React.FC = () => {
   };
   
   // Função para manipular os campos do formulário
-  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setNovaDespesa(prev => ({
-      ...prev,
-      [name]: value
-    }));
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement> | React.SyntheticEvent<Element, Event>) => {
+    if ('name' in e.target && 'value' in e.target) {
+      const { name, value } = e.target as { name: string; value: string };
+      setNovaDespesa(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
   };
   
   // Função para manipular campos do tipo select
@@ -401,7 +403,7 @@ const Despesas: React.FC = () => {
                     name="forma_pagamento"
                     value={novaDespesa.forma_pagamento || ''}
                     label="Forma de Pagamento"
-                    onChange={handleFormChange}
+                    onChange={(e) => handleSelectChange('forma_pagamento', e.target.value)}
                   >
                     <MenuItem value="">Selecione...</MenuItem>
                     <MenuItem value="dinheiro">Dinheiro</MenuItem>

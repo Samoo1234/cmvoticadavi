@@ -32,6 +32,12 @@ interface FormTitulo {
   observacoes: string;
 }
 
+// Interface para os itens de múltiplos títulos
+interface TituloItem {
+  vencimento: string;
+  valor: string;
+}
+
 // Tipo que combina os campos do formulário com os do banco de dados
 interface TituloCompleto extends Omit<Titulo, 'valor' | 'fornecedor_id' | 'filial_id' | 'data_vencimento' | 'observacao'> {
   filial: string;
@@ -58,6 +64,10 @@ const Titulos: React.FC = () => {
     message: '', 
     severity: 'info' 
   });
+  // Estados para controle de múltiplos títulos
+  const [multiplosTitulos, setMultiplosTitulos] = useState(false);
+  const [quantidadeTitulos, setQuantidadeTitulos] = useState(1);
+  const [itensTitulos, setItensTitulos] = useState<TituloItem[]>([{vencimento: '', valor: ''}]);
 
   // Carregar dados iniciais
   useEffect(() => {
@@ -124,7 +134,39 @@ const Titulos: React.FC = () => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
+  // Atualiza a quantidade de títulos
+  const handleQuantidadeTitulosChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const quantidade = parseInt(e.target.value) || 1;
+    setQuantidadeTitulos(quantidade);
+    
+    // Atualiza o array de itens de títulos
+    const novoArray = Array(quantidade).fill(null).map((_, index) => {
+      return itensTitulos[index] || { vencimento: '', valor: '' };
+    });
+    
+    setItensTitulos(novoArray);
+  };
+
+  // Atualiza os valores dos itens de títulos
+  const handleItemTituloChange = (index: number, campo: keyof TituloItem, valor: string) => {
+    const novoItens = [...itensTitulos];
+    novoItens[index] = { ...novoItens[index], [campo]: valor };
+    setItensTitulos(novoItens);
+  };
+
   const handleAddOrEdit = async () => {
+    // Validações específicas para múltiplos títulos
+    if (multiplosTitulos) {
+      const camposVazios = itensTitulos.some(item => !item.vencimento || !item.valor);
+      if (camposVazios) {
+        setAlert({
+          open: true,
+          message: 'Por favor, preencha todos os campos de data e valor para cada título.',
+          severity: 'warning'
+        });
+        return;
+      }
+    }
     if (!form.filial || !form.fornecedor || !form.vencimento || !form.valor || isNaN(parseFloat(form.valor))) {
       setAlert({
         open: true,
@@ -172,6 +214,7 @@ const Titulos: React.FC = () => {
         observacao: form.observacoes || undefined
       };
 
+      // Não permite edição em modo de múltiplos títulos
       if (editId) {
         // Atualizar título existente
         const updatedTitulo = await titulosService.update(editId, tituloData);
@@ -193,6 +236,72 @@ const Titulos: React.FC = () => {
             open: true,
             message: 'Título atualizado com sucesso!',
             severity: 'success'
+          });
+        }
+      } else if (multiplosTitulos) {
+        // Cadastrar múltiplos títulos
+        const fornecedorObj = fornecedores.find(f => f.nome === form.fornecedor);
+        const filialObj = filiais.find(f => f.nome === form.filial);
+
+        if (!fornecedorObj || !filialObj) {
+          setAlert({
+            open: true,
+            message: 'Fornecedor ou filial não encontrado.',
+            severity: 'error'
+          });
+          return;
+        }
+
+        try {
+          // Preparar array de promessas para criar todos os títulos
+          const promessasTitulos = itensTitulos.map((item, index) => {
+            // Gerar número do título baseado no fornecedor e data
+            const numeroTitulo = `${fornecedorObj.nome.substring(0, 3).toUpperCase()}-${new Date().getTime()}-${index + 1}`;
+            
+            const tituloData: Omit<Titulo, 'id'> = {
+              fornecedor_id: fornecedorObj.id,
+              filial_id: filialObj.id,
+              numero: numeroTitulo,
+              data_emissao: new Date().toISOString().split('T')[0],
+              data_vencimento: item.vencimento,
+              valor: parseFloat(item.valor),
+              status: 'pendente',
+              observacao: form.observacoes || ''
+            };
+            return titulosService.create(tituloData);
+          });
+
+          // Executar todas as promessas
+          const titulosCriados = await Promise.all(promessasTitulos);
+          
+          // Formatar os títulos criados para adicionar à lista
+          const novosTitulos = titulosCriados.map(titulo => ({
+            ...titulo,
+            filial: form.filial || '',
+            fornecedor: form.fornecedor || '',
+            vencimento: titulo.data_vencimento || '',
+            valor: titulo.valor.toString(),
+            observacoes: titulo.observacao || ''
+          }));
+
+          setTitulos([...titulos, ...novosTitulos]);
+          setAlert({
+            open: true,
+            message: `${titulosCriados.length} títulos adicionados com sucesso!`,
+            severity: 'success'
+          });
+
+          // Limpar formulário
+          setForm({});
+          setMultiplosTitulos(false);
+          setQuantidadeTitulos(1);
+          setItensTitulos([{vencimento: '', valor: ''}]);
+        } catch (error) {
+          console.error('Erro ao cadastrar múltiplos títulos:', error);
+          setAlert({
+            open: true,
+            message: 'Erro ao cadastrar títulos. Por favor, tente novamente.',
+            severity: 'error'
           });
         }
       } else {
@@ -329,6 +438,24 @@ const Titulos: React.FC = () => {
                 {editId ? 'Editar Título' : 'Novo Título'}
               </Typography>
               <Box display="flex" flexDirection="column" gap={2}>
+                {/* Opção para múltiplos títulos */}
+                <Box display="flex" alignItems="center" gap={2} sx={{ mt: 1 }}>
+                  <Button
+                    variant={multiplosTitulos ? "contained" : "outlined"}
+                    color="primary"
+                    onClick={() => {
+                      setMultiplosTitulos(!multiplosTitulos);
+                      if (!multiplosTitulos) {
+                        setItensTitulos([{vencimento: '', valor: ''}]);
+                        setQuantidadeTitulos(1);
+                      }
+                    }}
+                    disabled={!!editId}
+                    sx={{ mb: 1 }}
+                  >
+                    {multiplosTitulos ? 'Múltiplos Títulos Ativado' : 'Cadastrar Múltiplos Títulos'}
+                  </Button>
+                </Box>
                 <TextField
                   select
                   fullWidth
@@ -371,22 +498,70 @@ const Titulos: React.FC = () => {
                     ))
                   )}
                 </TextField>
-                <TextField
-                  label="Data de Vencimento"
-                  name="vencimento"
-                  type="date"
-                  value={form.vencimento || ''}
-                  onChange={handleChange}
-                  InputLabelProps={{ shrink: true }}
-                  fullWidth
-                />
-                <TextField
-                  label="Valor"
-                  name="valor"
-                  value={form.valor || ''}
-                  onChange={handleChange}
-                  fullWidth
-                />
+                {/* Campos normais ou campos para múltiplos títulos */}
+                {!multiplosTitulos ? (
+                  <>
+                    <TextField
+                      label="Data de Vencimento"
+                      name="vencimento"
+                      type="date"
+                      value={form.vencimento || ''}
+                      onChange={handleChange}
+                      InputLabelProps={{ shrink: true }}
+                      fullWidth
+                      required
+                    />
+                    <TextField
+                      label="Valor"
+                      name="valor"
+                      value={form.valor || ''}
+                      onChange={handleChange}
+                      fullWidth
+                      required
+                    />
+                  </>
+                ) : (
+                  <>
+                    <TextField
+                      label="Quantidade de Títulos"
+                      name="quantidadeTitulos"
+                      type="number"
+                      value={quantidadeTitulos}
+                      onChange={handleQuantidadeTitulosChange}
+                      InputProps={{ inputProps: { min: 1, max: 12 } }}
+                      fullWidth
+                      sx={{ mb: 2 }}
+                    />
+                    <Typography variant="subtitle1" sx={{ mt: 2, mb: 1 }}>
+                      Detalhes dos Títulos
+                    </Typography>
+                    <Box sx={{ ml: 2 }}>
+                      {itensTitulos.map((item, index) => (
+                        <Box key={index} sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
+                          <Typography variant="body2" sx={{ minWidth: 70 }}>
+                            Título {index + 1}:
+                          </Typography>
+                          <TextField
+                            label="Data de Vencimento"
+                            type="date"
+                            value={item.vencimento}
+                            onChange={(e) => handleItemTituloChange(index, 'vencimento', e.target.value)}
+                            InputLabelProps={{ shrink: true }}
+                            sx={{ flex: 1 }}
+                            required
+                          />
+                          <TextField
+                            label="Valor"
+                            value={item.valor}
+                            onChange={(e) => handleItemTituloChange(index, 'valor', e.target.value)}
+                            sx={{ flex: 1 }}
+                            required
+                          />
+                        </Box>
+                      ))}
+                    </Box>
+                  </>
+                )}
                 <TextField
                   label="Observações"
                   name="observacoes"

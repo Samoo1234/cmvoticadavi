@@ -37,7 +37,6 @@ const initialFormState: Omit<Filial, 'id'> = {
   nome: '',
   endereco: '',
   telefone: '',
-  responsavel: '',
   ativa: true
 };
 
@@ -283,14 +282,7 @@ const Filiais: React.FC = () => {
                   margin="normal"
                 />
                 
-                <TextField
-                  label="Responsável"
-                  name="responsavel"
-                  value={form.responsavel}
-                  onChange={handleChange}
-                  fullWidth
-                  margin="normal"
-                />
+
                 
                 <Box display="flex" alignItems="center" gap={1}>
                   <Checkbox
@@ -390,11 +382,7 @@ const Filiais: React.FC = () => {
                                 {filial.telefone}
                               </Typography>
                             )}
-                            {filial.responsavel && (
-                              <Typography component="span" display="block" color="text.secondary">
-                                Responsável: {filial.responsavel}
-                              </Typography>
-                            )}
+
                           </>
                         }
                         primaryTypographyProps={{

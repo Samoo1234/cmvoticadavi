@@ -4,9 +4,13 @@ export interface Titulo {
   id: number;
   numero: string;
   fornecedor_id: number;
+  filial_id: number;
   valor: number;
   data_emissao: string;
   data_vencimento: string;
+  data_pagamento?: string;
+  multa?: number;
+  juros?: number;
   status: 'pendente' | 'pago' | 'vencido' | 'cancelado';
   observacao?: string;
 }

@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Box, Typography, Card, CardContent, TextField, Button, IconButton, List, ListItem, ListItemText, ListItemSecondaryAction, MenuItem, CircularProgress, Snackbar, Alert } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { fornecedoresService, tiposFornecedoresService, filiaisService } from '../services';
+import { fornecedoresService, tiposFornecedoresService } from '../services';
 import type { Fornecedor } from '../services/fornecedoresService';
 
 const Fornecedores: React.FC = () => {
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [tiposFornecedores, setTiposFornecedores] = useState<string[]>([]);
-  const [filiais, setFiliais] = useState<string[]>([]);
+
   const [form, setForm] = useState<Partial<Fornecedor>>({});
   const [editId, setEditId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,9 +31,7 @@ const Fornecedores: React.FC = () => {
         const tiposData = await tiposFornecedoresService.getAll();
         setTiposFornecedores(tiposData.map(tipo => tipo.nome));
         
-        // Carregar filiais
-        const filiaisData = await filiaisService.getAll();
-        setFiliais(filiaisData.map(filial => filial.nome));
+
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
         setAlert({
@@ -54,7 +52,7 @@ const Fornecedores: React.FC = () => {
   };
 
   const handleAddOrEdit = async () => {
-    if (!form.nome || !form.cnpj || !form.endereco || !form.tipo || !form.filiais) {
+    if (!form.nome || !form.cnpj || !form.endereco || !form.tipo) {
       setAlert({
         open: true,
         message: 'Por favor, preencha todos os campos obrigatórios.',
@@ -200,23 +198,7 @@ const Fornecedores: React.FC = () => {
                       <MenuItem value="" disabled>Nenhum tipo cadastrado</MenuItem>
                     )}
                   </TextField>
-                  <TextField
-                    select
-                    label="Filiais"
-                    name="filiais"
-                    value={form.filiais || ''}
-                    onChange={handleChange}
-                    fullWidth
-                    required
-                  >
-                    {filiais.length > 0 ? (
-                      filiais.map(filial => (
-                        <MenuItem key={filial} value={filial}>{filial}</MenuItem>
-                      ))
-                    ) : (
-                      <MenuItem value="" disabled>Nenhuma filial cadastrada</MenuItem>
-                    )}
-                  </TextField>
+
                   <Button 
                     variant="contained" 
                     color="primary" 
@@ -244,7 +226,7 @@ const Fornecedores: React.FC = () => {
                       <ListItem key={fornecedor.id} divider>
                         <ListItemText
                           primary={fornecedor.nome}
-                          secondary={`CNPJ: ${fornecedor.cnpj} | Endereço: ${fornecedor.endereco} | Tipo: ${fornecedor.tipo} | Filiais: ${fornecedor.filiais}`}
+                          secondary={`CNPJ: ${fornecedor.cnpj} | Endereço: ${fornecedor.endereco} | Tipo: ${fornecedor.tipo}`}
                         />
                         <ListItemSecondaryAction>
                           <IconButton edge="end" aria-label="edit" onClick={() => handleEdit(fornecedor.id)}>

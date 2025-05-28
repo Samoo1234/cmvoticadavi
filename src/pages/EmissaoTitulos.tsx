@@ -1,7 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { formatDateToBrazilian } from '../utils/dateUtils';
-import { Box, Typography, Card, CardContent, TextField, Button, IconButton, List, ListItem, ListItemText, ListItemSecondaryAction, MenuItem, Stack, CircularProgress, Snackbar, Alert } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
+import { 
+  Box, 
+  Typography, 
+  Card, 
+  CardContent, 
+  TextField, 
+  Button, 
+  IconButton, 
+  List, 
+  ListItem, 
+  ListItemText, 
+  ListItemSecondaryAction, 
+  MenuItem, 
+  Stack, 
+  CircularProgress, 
+  Snackbar, 
+  Alert,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  InputAdornment
+} from '@mui/material';
+
 import DeleteIcon from '@mui/icons-material/Delete';
 import PaymentIcon from '@mui/icons-material/Payment';
 import PrintIcon from '@mui/icons-material/Print';
@@ -29,6 +52,8 @@ interface TituloCompleto extends Titulo {
   filial_id?: number;
   tipo_id?: number;
   data_pagamento?: string;
+  multa?: number;
+  juros?: number;
 }
 
 const EmissaoTitulos: React.FC = () => {
@@ -41,80 +66,90 @@ const EmissaoTitulos: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [alert, setAlert] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({ open: false, message: '', severity: 'info' });
   
+  // Estados para o modal de pagamento
+  const [modalPagamento, setModalPagamento] = useState(false);
+  const [tituloSelecionado, setTituloSelecionado] = useState<number | null>(null);
+  const [dataPagamento, setDataPagamento] = useState(new Date().toISOString().slice(0, 10));
+  const [multa, setMulta] = useState<string>('0');
+  const [juros, setJuros] = useState<string>('0');
+  
+
+  // Função para carregar dados (definida fora do useEffect para ser reutilizável)
+  const carregarDados = async () => {
+    setIsLoading(true);
+    try {
+      // Carregar dados dos dropdowns e títulos
+      const [dadosTipos, dadosFornecedores, dadosFiliais, dadosTitulos] = await Promise.all([
+        tiposFornecedoresService.getAll(),
+        fornecedoresService.getAll(),
+        filiaisService.getAll(),
+        titulosService.getAll()
+      ]);
+
+      // Mapear tipos para o formato {id, nome}
+      const tiposFormatados = dadosTipos.map(t => ({
+        id: t.id,
+        nome: t.nome
+      }));
+      setTipos(tiposFormatados);
+
+      // Mapear fornecedores para o formato {id, nome}
+      const fornecedoresFormatados = dadosFornecedores.map(f => ({
+        id: f.id,
+        nome: f.nome
+      }));
+      setFornecedores(fornecedoresFormatados);
+
+      // Mapear filiais para o formato {id, nome}
+      const filiaisFormatadas = dadosFiliais.map(f => ({
+        id: f.id,
+        nome: f.nome
+      }));
+      setFiliais(filiaisFormatadas);
+
+      // Processar os títulos
+      const titulosFormatados = dadosTitulos.map(titulo => {
+        const fornecedor = fornecedoresFormatados.find(f => f.id === titulo.fornecedor_id);
+        const filial = filiaisFormatadas.find(f => f.id === titulo.filial_id);
+        const tipo = tiposFormatados.find(t => t.id === titulo.tipo_id);
+
+        return {
+          id: titulo.id,
+          numero: titulo.numero,
+          tipo: tipo?.nome || 'Não especificado',
+          tipo_id: titulo.tipo_id,
+          fornecedor: fornecedor?.nome || 'Não especificado',
+          fornecedor_id: titulo.fornecedor_id,
+          filial: filial?.nome || 'Não especificada',
+          filial_id: titulo.filial_id,
+          vencimento: titulo.data_vencimento,
+          data_emissao: titulo.data_emissao,
+          pagamento: titulo.data_pagamento || '',
+          data_pagamento: titulo.data_pagamento,
+          valor: titulo.valor.toString(),
+          status: titulo.status,
+          observacao: titulo.observacao,
+          multa: titulo.multa,
+          juros: titulo.juros
+        };
+      });
+      
+      setTitulos(titulosFormatados);
+      setTitulosFiltrados(titulosFormatados);
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
+      setAlert({
+        open: true,
+        message: 'Erro ao carregar dados. Por favor, tente novamente.',
+        severity: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Carregar dados iniciais
   useEffect(() => {
-    const carregarDados = async () => {
-      setIsLoading(true);
-      try {
-        // Carregar dados dos dropdowns e títulos
-        const [dadosTipos, dadosFornecedores, dadosFiliais, dadosTitulos] = await Promise.all([
-          tiposFornecedoresService.getAll(),
-          fornecedoresService.getAll(),
-          filiaisService.getAll(),
-          titulosService.getAll()
-        ]);
-
-        // Mapear tipos para o formato {id, nome}
-        const tiposFormatados = dadosTipos.map(t => ({
-          id: t.id,
-          nome: t.nome
-        }));
-        setTipos(tiposFormatados);
-
-        // Mapear fornecedores para o formato {id, nome}
-        const fornecedoresFormatados = dadosFornecedores.map(f => ({
-          id: f.id,
-          nome: f.nome
-        }));
-        setFornecedores(fornecedoresFormatados);
-
-        // Mapear filiais para o formato {id, nome}
-        const filiaisFormatadas = dadosFiliais.map(f => ({
-          id: f.id,
-          nome: f.nome
-        }));
-        setFiliais(filiaisFormatadas);
-
-        // Processar os títulos
-        const titulosFormatados = dadosTitulos.map(titulo => {
-          const fornecedor = fornecedoresFormatados.find(f => f.id === titulo.fornecedor_id);
-          const filial = filiaisFormatadas.find(f => f.id === titulo.filial_id);
-          const tipo = tiposFormatados.find(t => t.id === titulo.tipo_id);
-
-          return {
-            id: titulo.id,
-            numero: titulo.numero,
-            tipo: tipo?.nome || 'Não especificado',
-            tipo_id: titulo.tipo_id,
-            fornecedor: fornecedor?.nome || 'Não especificado',
-            fornecedor_id: titulo.fornecedor_id,
-            filial: filial?.nome || 'Não especificada',
-            filial_id: titulo.filial_id,
-            vencimento: titulo.data_vencimento,
-            data_emissao: titulo.data_emissao,
-            pagamento: titulo.data_pagamento || '',
-            data_pagamento: titulo.data_pagamento,
-            valor: titulo.valor.toString(),
-            status: titulo.status,
-            observacao: titulo.observacao || ''
-          };
-        });
-
-        setTitulos(titulosFormatados);
-        setTitulosFiltrados(titulosFormatados);
-      } catch (error) {
-        console.error('Erro ao carregar dados:', error);
-        setAlert({
-          open: true,
-          message: 'Erro ao carregar dados. Tente novamente.',
-          severity: 'error'
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     carregarDados();
   }, []);
 
@@ -178,38 +213,89 @@ const EmissaoTitulos: React.FC = () => {
   };
 
   // Funções para ações
-  const handlePagar = async (id: number) => {
+  const handlePagar = (id: number) => {
+    // Em vez de processar o pagamento imediatamente, abrimos o modal
+    setTituloSelecionado(id);
+    setModalPagamento(true);
+    setDataPagamento(new Date().toISOString().slice(0, 10)); // Data atual como padrão
+    setMulta('0');
+    setJuros('0');
+  };
+
+  // Função para finalizar o pagamento normal (sem multa/juros)
+  const handleFinalizarPagamento = async () => {
+    if (tituloSelecionado === null) return;
+    
     try {
       setIsLoading(true);
-      const dataPagamento = new Date().toISOString();
-      // Atualizando apenas o status para 'pago', já que data_pagamento não existe na interface Titulo
-      const resultado = await titulosService.update(id, {
-        status: 'pago'
-      });
+      console.log('Processando pagamento para título ID:', tituloSelecionado);
+      
+      // Buscar o título selecionado
+      const tituloAtual = titulos.find(t => t.id === tituloSelecionado);
+      if (!tituloAtual) {
+        console.error('Título não encontrado');
+        setAlert({
+          open: true,
+          message: 'Título não encontrado. Tente novamente.',
+          severity: 'error'
+        });
+        return;
+      }
+      
+      // Preparar dados para atualização
+      const dadosAtualizacao = {
+        status: 'pago' as const,
+        data_pagamento: dataPagamento
+      };
+      
+      console.log('Dados de atualização:', dadosAtualizacao);
+      
+      // Atualizar no Supabase
+      const resultado = await titulosService.update(tituloSelecionado, dadosAtualizacao);
+      console.log('Resultado da atualização:', resultado);
       
       if (resultado) {
-        // Atualizar o estado local
         // Atualizar o estado local com a nova data de pagamento
-        const dataFormatada = dataPagamento.slice(0, 10);
-        setTitulos(titulos.map(t => t.id === id ? { 
-          ...t, 
-          status: 'pago', 
-          pagamento: dataFormatada,
-          data_pagamento: dataPagamento
-        } : t));
+        const novosTitulos = titulos.map(t => {
+          if (t.id === tituloSelecionado) {
+            return {
+              ...t,
+              status: 'pago',
+              pagamento: dataPagamento,
+              data_pagamento: dataPagamento
+            };
+          }
+          return t;
+        });
         
-        setTitulosFiltrados(titulosFiltrados.map(t => t.id === id ? { 
-          ...t, 
-          status: 'pago', 
-          pagamento: dataFormatada,
-          data_pagamento: dataPagamento
-        } : t));
+        setTitulos(novosTitulos);
         
+        // Atualizar os títulos filtrados também
+        const novosTitulosFiltrados = titulosFiltrados.map(t => {
+          if (t.id === tituloSelecionado) {
+            return {
+              ...t,
+              status: 'pago',
+              pagamento: dataPagamento,
+              data_pagamento: dataPagamento
+            };
+          }
+          return t;
+        });
+        
+        setTitulosFiltrados(novosTitulosFiltrados);
+        
+        // Mostrar alerta de sucesso
         setAlert({
           open: true,
           message: 'Título pago com sucesso!',
           severity: 'success'
         });
+        
+        // Fechar o modal
+        setModalPagamento(false);
+      } else {
+        throw new Error('Erro ao atualizar título no Supabase');
       }
     } catch (error) {
       console.error('Erro ao pagar título:', error);
@@ -222,10 +308,101 @@ const EmissaoTitulos: React.FC = () => {
       setIsLoading(false);
     }
   };
-  
-  // Função para edição será implementada no futuro
-  const handleEdit = (_id: number) => { 
-    // Prefixo com underscore indica que o parâmetro é intencionalmente não utilizado
+
+  // Função para confirmar pagamento com multa e juros
+  const handleConfirmarPagamentoComMultaJuros = async () => {
+    if (tituloSelecionado === null) return;
+    
+    try {
+      setIsLoading(true);
+      console.log('Processando pagamento com multa/juros para título ID:', tituloSelecionado);
+      
+      const multaValor = parseFloat(multa) || 0;
+      const jurosValor = parseFloat(juros) || 0;
+      
+      // Buscar o título selecionado
+      const tituloAtual = titulos.find(t => t.id === tituloSelecionado);
+      if (!tituloAtual) {
+        console.error('Título não encontrado');
+        setAlert({
+          open: true,
+          message: 'Título não encontrado. Tente novamente.',
+          severity: 'error'
+        });
+        return;
+      }
+      
+      // Preparar dados para atualização
+      const dadosAtualizacao = {
+        status: 'pago' as const,
+        data_pagamento: dataPagamento,
+        multa: multaValor,
+        juros: jurosValor
+      };
+      
+      console.log('Dados de atualização com multa/juros:', dadosAtualizacao);
+      
+      // Atualizar no Supabase
+      const resultado = await titulosService.update(tituloSelecionado, dadosAtualizacao);
+      console.log('Resultado da atualização:', resultado);
+      
+      if (resultado) {
+        // Atualizar o estado local com a nova data de pagamento
+        const novosTitulos = titulos.map(t => {
+          if (t.id === tituloSelecionado) {
+            return {
+              ...t,
+              status: 'pago',
+              pagamento: dataPagamento,
+              data_pagamento: dataPagamento,
+              multa: multaValor,
+              juros: jurosValor
+            };
+          }
+          return t;
+        });
+        
+        setTitulos(novosTitulos);
+        
+        // Atualizar os títulos filtrados também
+        const novosTitulosFiltrados = titulosFiltrados.map(t => {
+          if (t.id === tituloSelecionado) {
+            return {
+              ...t,
+              status: 'pago',
+              pagamento: dataPagamento,
+              data_pagamento: dataPagamento,
+              multa: multaValor,
+              juros: jurosValor
+            };
+          }
+          return t;
+        });
+        
+        setTitulosFiltrados(novosTitulosFiltrados);
+        
+        // Mostrar alerta de sucesso
+        setAlert({
+          open: true,
+          message: `Título pago com sucesso! Multa: R$ ${multaValor.toFixed(2)} | Juros: R$ ${jurosValor.toFixed(2)}`,
+          severity: 'success'
+        });
+        
+        // Fechar o modal
+        setModalPagamento(false);
+      } else {
+        throw new Error('Erro ao atualizar título no Supabase');
+      }
+    } catch (error) {
+      console.error('Erro ao pagar título com multa e juros:', error);
+      setAlert({
+        open: true,
+        message: 'Erro ao pagar título. Tente novamente.',
+        severity: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   const handleDelete = async (id: number) => {
@@ -320,6 +497,9 @@ const EmissaoTitulos: React.FC = () => {
               <th>Vencimento</th>
               <th>Pagamento</th>
               <th style="text-align: right">Valor (R$)</th>
+              <th style="text-align: right">Multa (R$)</th>
+              <th style="text-align: right">Juros (R$)</th>
+              <th style="text-align: right">Valor Final (R$)</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -333,7 +513,10 @@ const EmissaoTitulos: React.FC = () => {
                 <td>${titulo.data_emissao ? formatDateToBrazilian(titulo.data_emissao) : '-'}</td>
                 <td>${titulo.vencimento ? formatDateToBrazilian(titulo.vencimento) : '-'}</td>
                 <td>${titulo.pagamento ? formatDateToBrazilian(titulo.pagamento) : '-'}</td>
-                <td style="text-align: right">${parseFloat(titulo.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                <td style="text-align: right">${parseFloat(titulo.valor.toString()).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                <td style="text-align: right">${titulo.multa ? parseFloat(titulo.multa.toString()).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}</td>
+                <td style="text-align: right">${titulo.juros ? parseFloat(titulo.juros.toString()).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}</td>
+                <td style="text-align: right">${(parseFloat(titulo.valor.toString()) + (titulo.multa ? parseFloat(titulo.multa.toString()) : 0) + (titulo.juros ? parseFloat(titulo.juros.toString()) : 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                 <td>${titulo.status === 'pago' ? 'Pago' : titulo.status === 'pendente' ? 'Pendente' : titulo.status}</td>
               </tr>
             `).join('')}
@@ -341,7 +524,22 @@ const EmissaoTitulos: React.FC = () => {
               <td colspan="7" style="text-align: right">Total:</td>
               <td style="text-align: right">
                 ${titulosFiltrados
-                  .reduce((acc, titulo) => acc + parseFloat(titulo.valor), 0)
+                  .reduce((acc, titulo) => acc + parseFloat(titulo.valor.toString()), 0)
+                  .toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </td>
+              <td style="text-align: right">
+                ${titulosFiltrados
+                  .reduce((acc, titulo) => acc + (titulo.multa ? parseFloat(titulo.multa.toString()) : 0), 0)
+                  .toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </td>
+              <td style="text-align: right">
+                ${titulosFiltrados
+                  .reduce((acc, titulo) => acc + (titulo.juros ? parseFloat(titulo.juros.toString()) : 0), 0)
+                  .toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </td>
+              <td style="text-align: right">
+                ${titulosFiltrados
+                  .reduce((acc, titulo) => acc + parseFloat(titulo.valor.toString()) + (titulo.multa ? parseFloat(titulo.multa.toString()) : 0) + (titulo.juros ? parseFloat(titulo.juros.toString()) : 0), 0)
                   .toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </td>
               <td></td>
@@ -354,16 +552,28 @@ const EmissaoTitulos: React.FC = () => {
           <div>Total de títulos: ${titulosFiltrados.length}</div>
           <div>
             Títulos pagos: ${titulosFiltrados.filter(t => t.status === 'pago').length} 
-            (R$ ${titulosFiltrados
+            (Valor: R$ ${titulosFiltrados
               .filter(t => t.status === 'pago')
-              .reduce((acc, titulo) => acc + parseFloat(titulo.valor), 0)
+              .reduce((acc, titulo) => acc + parseFloat(titulo.valor.toString()), 0)
+              .toLocaleString('pt-BR', { minimumFractionDigits: 2 })},
+            Multa: R$ ${titulosFiltrados
+              .filter(t => t.status === 'pago')
+              .reduce((acc, titulo) => acc + (titulo.multa ? parseFloat(titulo.multa.toString()) : 0), 0)
+              .toLocaleString('pt-BR', { minimumFractionDigits: 2 })},
+            Juros: R$ ${titulosFiltrados
+              .filter(t => t.status === 'pago')
+              .reduce((acc, titulo) => acc + (titulo.juros ? parseFloat(titulo.juros.toString()) : 0), 0)
+              .toLocaleString('pt-BR', { minimumFractionDigits: 2 })},
+            Total: R$ ${titulosFiltrados
+              .filter(t => t.status === 'pago')
+              .reduce((acc, titulo) => acc + parseFloat(titulo.valor.toString()) + (titulo.multa ? parseFloat(titulo.multa.toString()) : 0) + (titulo.juros ? parseFloat(titulo.juros.toString()) : 0), 0)
               .toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
           </div>
           <div>
             Títulos pendentes: ${titulosFiltrados.filter(t => t.status === 'pendente').length}
             (R$ ${titulosFiltrados
               .filter(t => t.status === 'pendente')
-              .reduce((acc, titulo) => acc + parseFloat(titulo.valor), 0)
+              .reduce((acc, titulo) => acc + parseFloat(titulo.valor.toString()), 0)
               .toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
           </div>
         </div>
@@ -414,8 +624,77 @@ const EmissaoTitulos: React.FC = () => {
           {alert.message}
         </Alert>
       </Snackbar>
+
+      {/* Modal de pagamento */}
+      <Dialog open={modalPagamento} onClose={() => setModalPagamento(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Registrar Pagamento</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Informe a data de pagamento e, caso necessário, valores de multa e juros.
+          </DialogContentText>
+          
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            <TextField
+              label="Data de Pagamento"
+              type="date"
+              fullWidth
+              value={dataPagamento}
+              onChange={(e) => setDataPagamento(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              required
+            />
+            
+            <Typography variant="subtitle2" sx={{ mt: 1 }}>
+              Para pagamentos em atraso, informe os valores de multa e juros:
+            </Typography>
+            
+            <TextField
+              label="Multa"
+              type="number"
+              fullWidth
+              value={multa}
+              onChange={(e) => setMulta(e.target.value)}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                inputProps: { step: '0.01', min: '0' }
+              }}
+            />
+            
+            <TextField
+              label="Juros"
+              type="number"
+              fullWidth
+              value={juros}
+              onChange={(e) => setJuros(e.target.value)}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                inputProps: { step: '0.01', min: '0' }
+              }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
+          <Button 
+            variant="contained" 
+            color="primary" 
+            onClick={handleFinalizarPagamento}
+          >
+            Finalizar Pagamento
+          </Button>
+          <Button 
+            variant="contained" 
+            color="secondary" 
+            onClick={handleConfirmarPagamentoComMultaJuros}
+            disabled={parseFloat(multa) <= 0 && parseFloat(juros) <= 0}
+          >
+            Confirmar com Multa/Juros
+          </Button>
+          <Button onClick={() => setModalPagamento(false)}>Cancelar</Button>
+        </DialogActions>
+      </Dialog>
+
       <Typography variant="h4" gutterBottom color="primary">
-        Emissão de Títulos
+        Extrato de Títulos
       </Typography>
       <Card sx={{ mb: 3 }}>
         <CardContent>
@@ -469,7 +748,7 @@ const EmissaoTitulos: React.FC = () => {
       <Card>
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-            <Typography variant="h6">Títulos Emitidos</Typography>
+            <Typography variant="h6">Extrato de Títulos</Typography>
             <Button variant="outlined" startIcon={<PrintIcon />} onClick={handleRelatorio}>Relatório</Button>
           </Box>
           <List>
@@ -485,9 +764,6 @@ const EmissaoTitulos: React.FC = () => {
                 <ListItemSecondaryAction>
                   <IconButton edge="end" aria-label="pagar" onClick={() => handlePagar(titulo.id)} disabled={titulo.status === 'pago'}>
                     <PaymentIcon />
-                  </IconButton>
-                  <IconButton edge="end" aria-label="edit" onClick={() => handleEdit(titulo.id)}>
-                    <EditIcon />
                   </IconButton>
                   <IconButton edge="end" aria-label="delete" onClick={() => handleDelete(titulo.id)}>
                     <DeleteIcon />

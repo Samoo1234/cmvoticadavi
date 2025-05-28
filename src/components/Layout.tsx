@@ -19,7 +19,7 @@ const menuItems = [
   { text: 'Tipos de Fornecedores', icon: <CategoryIcon />, path: '/tipos-fornecedores' },
   { text: 'Fornecedores', icon: <BusinessIcon />, path: '/fornecedores' },
   { text: 'Títulos', icon: <ReceiptIcon />, path: '/titulos' },
-  { text: 'Emissão de Títulos', icon: <AssignmentIcon />, path: '/emissao-titulos' },
+  { text: 'Extrato de Títulos', icon: <AssignmentIcon />, path: '/emissao-titulos' },
   { text: 'Custo de OS', icon: <MonetizationOnIcon />, path: '/custo-os' },
   { text: 'Relatório de OS', icon: <BarChartIcon />, path: '/relatorio-os' },
 ];

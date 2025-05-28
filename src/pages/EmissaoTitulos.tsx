@@ -31,6 +31,7 @@ import {
 import DeleteIcon from '@mui/icons-material/Delete';
 import PaymentIcon from '@mui/icons-material/Payment';
 import PrintIcon from '@mui/icons-material/Print';
+import EditIcon from '@mui/icons-material/Edit';
 import { filiaisService } from '../services/filiaisService';
 import { fornecedoresService } from '../services/fornecedoresService';
 import { tiposFornecedoresService } from '../services/tiposFornecedoresService';
@@ -76,6 +77,10 @@ const EmissaoTitulos: React.FC = () => {
   const [dataPagamento, setDataPagamento] = useState(new Date().toISOString().slice(0, 10));
   const [multa, setMulta] = useState<string>('0');
   const [juros, setJuros] = useState<string>('0');
+  
+  // Estados para o modal de edição
+  const [modalEdicao, setModalEdicao] = useState(false);
+  const [tituloEdicao, setTituloEdicao] = useState<TituloCompleto | null>(null);
   
 
   // Função para carregar dados (definida fora do useEffect para ser reutilizável)
@@ -241,10 +246,18 @@ const EmissaoTitulos: React.FC = () => {
   const handlePagar = (id: number) => {
     // Em vez de processar o pagamento imediatamente, abrimos o modal
     setTituloSelecionado(id);
-    setModalPagamento(true);
-    setDataPagamento(new Date().toISOString().slice(0, 10)); // Data atual como padrão
+    setDataPagamento(new Date().toISOString().slice(0, 10));
     setMulta('0');
     setJuros('0');
+    setModalPagamento(true);
+  };
+  
+  // Função para abrir o modal de edição
+  const handleEditar = (titulo: TituloCompleto) => {
+    setTituloEdicao(titulo);
+    setMulta(titulo.multa?.toString() || '0');
+    setJuros(titulo.juros?.toString() || '0');
+    setModalEdicao(true);
   };
 
   // Função para finalizar o pagamento normal (sem multa/juros)
@@ -423,6 +436,82 @@ const EmissaoTitulos: React.FC = () => {
       setAlert({
         open: true,
         message: 'Erro ao pagar título. Tente novamente.',
+        severity: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Função para salvar edição de título
+  const handleSalvarEdicao = async () => {
+    if (!tituloEdicao) return;
+    
+    try {
+      setIsLoading(true);
+      console.log('Processando edição para título ID:', tituloEdicao.id);
+      
+      const multaValor = parseFloat(multa) || 0;
+      const jurosValor = parseFloat(juros) || 0;
+      
+      // Preparar dados para atualização
+      const dadosAtualizacao = {
+        multa: multaValor,
+        juros: jurosValor
+      };
+      
+      console.log('Dados de atualização:', dadosAtualizacao);
+      
+      // Atualizar no Supabase
+      const resultado = await titulosService.update(tituloEdicao.id, dadosAtualizacao);
+      console.log('Resultado da atualização:', resultado);
+      
+      if (resultado) {
+        // Atualizar o estado local com os novos valores de multa e juros
+        const novosTitulos = titulos.map(t => {
+          if (t.id === tituloEdicao.id) {
+            return {
+              ...t,
+              multa: multaValor,
+              juros: jurosValor
+            };
+          }
+          return t;
+        });
+        
+        setTitulos(novosTitulos);
+        
+        // Atualizar os títulos filtrados também
+        const novosTitulosFiltrados = titulosFiltrados.map(t => {
+          if (t.id === tituloEdicao.id) {
+            return {
+              ...t,
+              multa: multaValor,
+              juros: jurosValor
+            };
+          }
+          return t;
+        });
+        
+        setTitulosFiltrados(novosTitulosFiltrados);
+        
+        // Mostrar alerta de sucesso
+        setAlert({
+          open: true,
+          message: 'Edição salva com sucesso!',
+          severity: 'success'
+        });
+        
+        // Fechar o modal
+        setModalEdicao(false);
+      } else {
+        throw new Error('Erro ao atualizar título no Supabase');
+      }
+    } catch (error) {
+      console.error('Erro ao salvar edição:', error);
+      setAlert({
+        open: true,
+        message: 'Erro ao salvar edição. Tente novamente.',
         severity: 'error'
       });
     } finally {
@@ -704,6 +793,7 @@ const EmissaoTitulos: React.FC = () => {
             variant="contained" 
             color="primary" 
             onClick={handleFinalizarPagamento}
+            disabled={!dataPagamento}
           >
             Finalizar Pagamento
           </Button>
@@ -716,6 +806,80 @@ const EmissaoTitulos: React.FC = () => {
             Confirmar com Multa/Juros
           </Button>
           <Button onClick={() => setModalPagamento(false)}>Cancelar</Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Modal de edição */}
+      <Dialog open={modalEdicao} onClose={() => setModalEdicao(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Editar Pagamento</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Edite os valores de multa e juros do título.
+          </DialogContentText>
+          
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            <TextField
+              label="Título"
+              value={tituloEdicao?.numero || 'Sem número'}
+              InputProps={{ readOnly: true }}
+              fullWidth
+              disabled
+            />
+            
+            <TextField
+              label="Fornecedor"
+              value={tituloEdicao?.fornecedor || ''}
+              InputProps={{ readOnly: true }}
+              fullWidth
+              disabled
+            />
+            
+            <TextField
+              label="Valor Original"
+              value={tituloEdicao ? `R$ ${parseFloat(tituloEdicao.valor).toFixed(2)}` : ''}
+              InputProps={{ readOnly: true }}
+              fullWidth
+              disabled
+            />
+            
+            <Typography variant="subtitle1" sx={{ mt: 1 }}>
+              Valores de multa e juros:
+            </Typography>
+            
+            <TextField
+              label="Multa"
+              type="number"
+              fullWidth
+              value={multa}
+              onChange={(e) => setMulta(e.target.value)}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                inputProps: { step: '0.01', min: '0' }
+              }}
+            />
+            
+            <TextField
+              label="Juros"
+              type="number"
+              fullWidth
+              value={juros}
+              onChange={(e) => setJuros(e.target.value)}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                inputProps: { step: '0.01', min: '0' }
+              }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            variant="contained" 
+            color="primary" 
+            onClick={handleSalvarEdicao}
+          >
+            Salvar Alterações
+          </Button>
+          <Button onClick={() => setModalEdicao(false)}>Cancelar</Button>
         </DialogActions>
       </Dialog>
 
@@ -819,6 +983,11 @@ const EmissaoTitulos: React.FC = () => {
                   <IconButton edge="end" aria-label="pagar" onClick={() => handlePagar(titulo.id)} disabled={titulo.status === 'pago'}>
                     <PaymentIcon />
                   </IconButton>
+                  {titulo.status === 'pago' && (
+                    <IconButton edge="end" aria-label="editar" onClick={() => handleEditar(titulo)}>
+                      <EditIcon />
+                    </IconButton>
+                  )}
                   <IconButton edge="end" aria-label="delete" onClick={() => handleDelete(titulo.id)}>
                     <DeleteIcon />
                   </IconButton>

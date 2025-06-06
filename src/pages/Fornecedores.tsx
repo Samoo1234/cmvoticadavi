@@ -52,7 +52,7 @@ const Fornecedores: React.FC = () => {
   };
 
   const handleAddOrEdit = async () => {
-    if (!form.nome || !form.cnpj || !form.endereco || !form.tipo) {
+    if (!form.nome || !form.cnpj || !form.tipo) {
       setAlert({
         open: true,
         message: 'Por favor, preencha todos os campos obrigatórios.',
@@ -173,14 +173,7 @@ const Fornecedores: React.FC = () => {
                     fullWidth
                     required
                   />
-                  <TextField
-                    label="Endereço"
-                    name="endereco"
-                    value={form.endereco || ''}
-                    onChange={handleChange}
-                    fullWidth
-                    required
-                  />
+
                   <TextField
                     select
                     label="Tipo"
@@ -226,7 +219,7 @@ const Fornecedores: React.FC = () => {
                       <ListItem key={fornecedor.id} divider>
                         <ListItemText
                           primary={fornecedor.nome}
-                          secondary={`CNPJ: ${fornecedor.cnpj} | Endereço: ${fornecedor.endereco} | Tipo: ${fornecedor.tipo}`}
+                          secondary={`CNPJ: ${fornecedor.cnpj} | Tipo: ${fornecedor.tipo}`}
                         />
                         <ListItemSecondaryAction>
                           <IconButton edge="end" aria-label="edit" onClick={() => handleEdit(fornecedor.id)}>

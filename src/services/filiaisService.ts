@@ -141,6 +141,12 @@ export const filiaisService = {
     
     if (error) {
       console.error(`Erro ao excluir filial ${id}:`, error);
+      
+      // Verifica se é um erro de violação de chave estrangeira
+      if (error.code === '23503') {
+        throw new Error('Esta filial não pode ser excluída porque está sendo utilizada em outros registros do sistema.');
+      }
+      
       return false;
     }
     

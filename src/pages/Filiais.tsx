@@ -202,12 +202,13 @@ const Filiais: React.FC = () => {
           severity: 'success'
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao excluir filial:', error);
       setAlert({
         open: true,
-        message: 'Erro ao excluir filial. Por favor, tente novamente.',
-        severity: 'error'
+        message: error?.message || 'Erro ao excluir filial. Por favor, tente novamente.',
+        severity: 'error',
+        autoHideDuration: 8000 // Aumenta o tempo de exibição para mensagens de erro mais complexas
       });
     } finally {
       setLoading(false);

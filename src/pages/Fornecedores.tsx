@@ -29,8 +29,11 @@ const Fornecedores: React.FC = () => {
         
         // Carregar tipos de fornecedores
         const tiposData = await tiposFornecedoresService.getAll();
-        setTiposFornecedores(tiposData.map(tipo => tipo.nome));
-        
+        if (tiposData && tiposData.length > 0) {
+          setTiposFornecedores(tiposData.map(tipo => tipo.nome));
+        } else {
+          setTiposFornecedores([]);
+        }
 
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
@@ -52,10 +55,11 @@ const Fornecedores: React.FC = () => {
   };
 
   const handleAddOrEdit = async () => {
+    // Validar campos obrigatórios
     if (!form.nome || !form.cnpj || !form.tipo) {
       setAlert({
         open: true,
-        message: 'Por favor, preencha todos os campos obrigatórios.',
+        message: 'Por favor, preencha todos os campos obrigatórios: Nome, CNPJ e Tipo.',
         severity: 'warning'
       });
       return;
@@ -64,9 +68,19 @@ const Fornecedores: React.FC = () => {
     try {
       setLoading(true);
       
+      // Garantir que todos os campos esperados existam
+      const dadosCompletos = {
+        nome: form.nome?.trim(),
+        cnpj: form.cnpj?.trim(),
+        tipo: form.tipo,
+        endereco: form.endereco || '',
+        filiais: form.filiais || ''
+      };
+      
       if (editId) {
         // Atualizar fornecedor existente
-        const updated = await fornecedoresService.update(editId, form);
+        const updated = await fornecedoresService.update(editId, dadosCompletos);
+        
         if (updated) {
           setFornecedores(fornecedores.map(f => f.id === editId ? updated : f));
           setAlert({
@@ -74,11 +88,14 @@ const Fornecedores: React.FC = () => {
             message: 'Fornecedor atualizado com sucesso!',
             severity: 'success'
           });
+        } else {
+          throw new Error('Não foi possível atualizar o fornecedor');
         }
         setEditId(null);
       } else {
         // Criar novo fornecedor
-        const created = await fornecedoresService.create(form as Omit<Fornecedor, 'id'>);
+        const created = await fornecedoresService.create(dadosCompletos as Omit<Fornecedor, 'id'>);
+        
         if (created) {
           setFornecedores([...fornecedores, created]);
           setAlert({
@@ -86,8 +103,12 @@ const Fornecedores: React.FC = () => {
             message: 'Fornecedor adicionado com sucesso!',
             severity: 'success'
           });
+        } else {
+          throw new Error('Não foi possível criar o fornecedor');
         }
       }
+      
+      // Limpar formulário após operação bem-sucedida
       setForm({});
     } catch (error) {
       console.error('Erro ao salvar fornecedor:', error);

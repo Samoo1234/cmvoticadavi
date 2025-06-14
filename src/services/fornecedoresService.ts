@@ -4,23 +4,28 @@ export interface Fornecedor {
   id: number;
   nome: string;
   cnpj: string;
-  endereco: string;
+  endereco?: string;
   tipo: string;
-  filiais: string;
+  filiais?: string;
 }
 
 export const fornecedoresService = {
   async getAll() {
-    const { data, error } = await supabase
-      .from('fornecedores')
-      .select('*');
-    
-    if (error) {
-      console.error('Erro ao buscar fornecedores:', error);
+    try {
+      const { data, error } = await supabase
+        .from('fornecedores')
+        .select('*');
+      
+      if (error) {
+        console.error('Erro ao buscar fornecedores:', error);
+        return [];
+      }
+      
+      return data || [];
+    } catch (e) {
+      console.error('Exceção ao buscar fornecedores:', e);
       return [];
     }
-    
-    return data || [];
   },
   
   async getById(id: number) {
@@ -39,17 +44,38 @@ export const fornecedoresService = {
   },
   
   async create(fornecedor: Omit<Fornecedor, 'id'>) {
-    const { data, error } = await supabase
-      .from('fornecedores')
-      .insert(fornecedor)
-      .select();
-    
-    if (error) {
-      console.error('Erro ao criar fornecedor:', error);
+    try {
+      // Validar dados antes de enviar ao Supabase
+      if (!fornecedor.nome || !fornecedor.cnpj || !fornecedor.tipo) {
+        console.error('Dados obrigatórios faltando');
+        return null;
+      }
+      
+      // Garantir que campos não nulos estejam presentes
+      const dadosValidados = {
+        nome: fornecedor.nome,
+        cnpj: fornecedor.cnpj,
+        tipo: fornecedor.tipo,
+        endereco: fornecedor.endereco || '',
+        filiais: fornecedor.filiais || ''
+      };
+      
+      // Criação direta sem verificação prévia
+      const { data, error } = await supabase
+        .from('fornecedores')
+        .insert(dadosValidados)
+        .select();
+      
+      if (error) {
+        console.error('Erro ao criar fornecedor:', error);
+        return null;
+      }
+      
+      return data?.[0] || null;
+    } catch (e) {
+      console.error('Exceção ao criar fornecedor:', e);
       return null;
     }
-    
-    return data[0];
   },
   
   async update(id: number, fornecedor: Partial<Fornecedor>) {

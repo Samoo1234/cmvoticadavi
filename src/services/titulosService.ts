@@ -5,6 +5,7 @@ export interface Titulo {
   numero: string;
   fornecedor_id: number;
   filial_id: number;
+  tipo_id?: number; // Nova coluna adicionada para tipo de fornecedor
   valor: number;
   data_emissao: string;
   data_vencimento: string;

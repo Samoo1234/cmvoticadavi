@@ -21,12 +21,14 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { titulosService, type Titulo } from '../services/titulosService';
 import { filiaisService } from '../services/filiaisService';
 import { fornecedoresService } from '../services/fornecedoresService';
+import { tiposFornecedoresService } from '../services/tiposFornecedoresService';
 
 // Interface local para o formulário
 interface FormTitulo {
   id?: number;
   filial: string;
   fornecedor: string;
+  tipo: string; // Novo campo para tipo de fornecedor
   vencimento: string;
   valor: string;
   observacoes: string;
@@ -39,15 +41,17 @@ interface TituloItem {
 }
 
 // Tipo que combina os campos do formulário com os do banco de dados
-interface TituloCompleto extends Omit<Titulo, 'valor' | 'fornecedor_id' | 'filial_id' | 'data_vencimento' | 'observacao'> {
+interface TituloCompleto extends Omit<Titulo, 'valor' | 'fornecedor_id' | 'filial_id' | 'tipo_id' | 'data_vencimento' | 'observacao'> {
   filial: string;
   fornecedor: string;
+  tipo: string; // Novo campo para tipo de fornecedor
   vencimento: string;
   valor: string; // string no formulário, number no banco
   observacoes: string;
   // Campos opcionais para compatibilidade
   fornecedor_id?: number;
   filial_id?: number;
+  tipo_id?: number; // ID do tipo de fornecedor
   data_vencimento?: string;
   observacao?: string;
 }
@@ -56,6 +60,7 @@ const Titulos: React.FC = () => {
   const [titulos, setTitulos] = useState<TituloCompleto[]>([]);
   const [filiais, setFiliais] = useState<{id: number, nome: string}[]>([]);
   const [fornecedores, setFornecedores] = useState<{id: number, nome: string}[]>([]);
+  const [tipos, setTipos] = useState<{id: number, nome: string}[]>([]);
   const [form, setForm] = useState<Partial<FormTitulo>>({});
   const [editId, setEditId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -75,10 +80,11 @@ const Titulos: React.FC = () => {
       setIsLoading(true);
       try {
         // Carregar títulos
-        const [dadosTitulos, dadosFiliais, dadosFornecedores] = await Promise.all([
+        const [dadosTitulos, dadosFiliais, dadosFornecedores, dadosTipos] = await Promise.all([
           titulosService.getAll(),
           filiaisService.getAll(),
-          fornecedoresService.getAll()
+          fornecedoresService.getAll(),
+          tiposFornecedoresService.getAll()
         ]);
 
         // Mapear filiais para o formato {id, nome}
@@ -94,6 +100,13 @@ const Titulos: React.FC = () => {
           nome: f.nome
         }));
         setFornecedores(fornecedoresFormatados);
+        
+        // Mapear tipos para o formato {id, nome}
+        const tiposFormatados = dadosTipos.map(t => ({
+          id: t.id,
+          nome: t.nome
+        }));
+        setTipos(tiposFormatados);
 
         // Converter os dados dos títulos para o formato do formulário
         const titulosFormatados: TituloCompleto[] = await Promise.all(
@@ -102,11 +115,14 @@ const Titulos: React.FC = () => {
             const filial = filiaisFormatadas.find(f => f.id === titulo.filial_id);
             // Buscar nome do fornecedor
             const fornecedor = fornecedoresFormatados.find(f => f.id === titulo.fornecedor_id);
+            // Buscar nome do tipo
+            const tipo = tiposFormatados.find(t => t.id === titulo.tipo_id);
             
             return {
               ...titulo,
               filial: filial?.nome || 'Filial não encontrada',
               fornecedor: fornecedor?.nome || 'Fornecedor não encontrado',
+              tipo: tipo?.nome || 'Tipo não especificado',
               vencimento: titulo.data_vencimento,
               valor: titulo.valor.toString(),
               observacoes: titulo.observacao || ''
@@ -167,7 +183,7 @@ const Titulos: React.FC = () => {
         return;
       }
     }
-    if (!form.filial || !form.fornecedor || !form.vencimento || !form.valor || isNaN(parseFloat(form.valor))) {
+    if (!form.filial || !form.fornecedor || !form.tipo || !form.vencimento || !form.valor || isNaN(parseFloat(form.valor))) {
       setAlert({
         open: true,
         message: 'Preencha todos os campos obrigatórios.',
@@ -202,11 +218,24 @@ const Titulos: React.FC = () => {
         return;
       }
       
+      // Encontrar o ID do tipo pelo nome
+      const tipoSelecionado = tipos.find(t => t.nome === form.tipo);
+      if (!tipoSelecionado) {
+        setAlert({
+          open: true,
+          message: 'Tipo não encontrado. Por favor, selecione um tipo válido.',
+          severity: 'error'
+        });
+        setIsLoading(false);
+        return;
+      }
+      
       const tituloData = {
         // Mapear campos do formulário para o modelo do banco de dados
         numero: `TIT-${Date.now()}`,
         fornecedor_id: fornecedorSelecionado.id,
         filial_id: filialSelecionada.id,
+        tipo_id: tipoSelecionado.id, // Adicionando tipo_id
         valor: parseFloat(form.valor),
         data_emissao: new Date().toISOString(),
         data_vencimento: form.vencimento || '',
@@ -242,8 +271,9 @@ const Titulos: React.FC = () => {
         // Cadastrar múltiplos títulos
         const fornecedorObj = fornecedores.find(f => f.nome === form.fornecedor);
         const filialObj = filiais.find(f => f.nome === form.filial);
+        const tipoObj = tipos.find(t => t.nome === form.tipo);
 
-        if (!fornecedorObj || !filialObj) {
+        if (!fornecedorObj || !filialObj || !tipoObj) {
           setAlert({
             open: true,
             message: 'Fornecedor ou filial não encontrado.',
@@ -261,6 +291,7 @@ const Titulos: React.FC = () => {
             const tituloData: Omit<Titulo, 'id'> = {
               fornecedor_id: fornecedorObj.id,
               filial_id: filialObj.id,
+              tipo_id: tipoObj.id, // Adicionando tipo_id
               numero: numeroTitulo,
               data_emissao: new Date().toISOString().split('T')[0],
               data_vencimento: item.vencimento,
@@ -279,6 +310,7 @@ const Titulos: React.FC = () => {
             ...titulo,
             filial: form.filial || '',
             fornecedor: form.fornecedor || '',
+            tipo: form.tipo || '',
             vencimento: titulo.data_vencimento || '',
             valor: titulo.valor.toString(),
             observacoes: titulo.observacao || ''
@@ -313,6 +345,7 @@ const Titulos: React.FC = () => {
             ...novoTitulo,
             filial: form.filial,
             fornecedor: form.fornecedor,
+            tipo: form.tipo,
             vencimento: form.vencimento || '',
             valor: form.valor || '0',
             observacoes: form.observacoes || ''
@@ -349,6 +382,7 @@ const Titulos: React.FC = () => {
         id: titulo.id,
         filial: titulo.filial,
         fornecedor: titulo.fornecedor,
+        tipo: titulo.tipo,
         vencimento: titulo.vencimento,
         valor: titulo.valor,
         observacoes: titulo.observacoes
@@ -498,6 +532,27 @@ const Titulos: React.FC = () => {
                     ))
                   )}
                 </TextField>
+                <TextField
+                  select
+                  fullWidth
+                  label="Tipo"
+                  name="tipo"
+                  value={form.tipo || ''}
+                  onChange={handleChange}
+                  margin="normal"
+                  required
+                  disabled={isLoading || tipos.length === 0}
+                >
+                  {tipos.length === 0 ? (
+                    <MenuItem disabled>Carregando tipos...</MenuItem>
+                  ) : (
+                    tipos.map((tipo) => (
+                      <MenuItem key={tipo.id} value={tipo.nome}>
+                        {tipo.nome}
+                      </MenuItem>
+                    ))
+                  )}
+                </TextField>
                 {/* Campos normais ou campos para múltiplos títulos */}
                 {!multiplosTitulos ? (
                   <>
@@ -588,7 +643,7 @@ const Titulos: React.FC = () => {
                 {titulos.map(titulo => (
                   <ListItem key={titulo.id} divider>
                     <ListItemText
-                      primary={`${titulo.filial} - ${titulo.fornecedor}`}
+                      primary={`${titulo.filial} - ${titulo.fornecedor} (${titulo.tipo})`}
                       secondary={`Vencimento: ${titulo.vencimento} | Valor: ${titulo.valor} | Obs: ${titulo.observacoes}`}
                     />
                     <ListItemSecondaryAction>

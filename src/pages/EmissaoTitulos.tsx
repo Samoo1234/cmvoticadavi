@@ -1,0 +1,1006 @@
+import React, { useState, useEffect } from 'react';
+import { formatDateToBrazilian } from '../utils/dateUtils';
+import { 
+  Box, 
+  Typography, 
+  Card, 
+  CardContent, 
+  TextField, 
+  Button, 
+  IconButton, 
+  List, 
+  ListItem, 
+  ListItemText, 
+  ListItemSecondaryAction, 
+  MenuItem, 
+  Stack, 
+  CircularProgress, 
+  Snackbar, 
+  Alert,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  InputAdornment,
+  FormControlLabel,
+  Checkbox,
+  FormGroup
+} from '@mui/material';
+
+import DeleteIcon from '@mui/icons-material/Delete';
+import PaymentIcon from '@mui/icons-material/Payment';
+import PrintIcon from '@mui/icons-material/Print';
+import EditIcon from '@mui/icons-material/Edit';
+import { filiaisService } from '../services/filiaisService';
+import { fornecedoresService } from '../services/fornecedoresService';
+import { tiposFornecedoresService } from '../services/tiposFornecedoresService';
+import { titulosService } from '../services/titulosService';
+
+interface Titulo {
+  id: number;
+  tipo: string;
+  fornecedor: string;
+  filial: string;
+  vencimento: string;
+  pagamento: string;
+  valor: string;
+  status: string;
+  numero?: string;
+  data_emissao?: string;
+  observacao?: string;
+}
+
+interface TituloCompleto extends Titulo {
+  fornecedor_id?: number;
+  filial_id?: number;
+  tipo_id?: number;
+  data_pagamento?: string;
+  multa?: number;
+  juros?: number;
+}
+
+const EmissaoTitulos: React.FC = () => {
+  const [titulos, setTitulos] = useState<TituloCompleto[]>([]);
+  const [titulosFiltrados, setTitulosFiltrados] = useState<TituloCompleto[]>([]);
+  const [filtros, setFiltros] = useState({ tipo: '', fornecedor: '', filial: '', dataInicial: '', dataFinal: '' });
+  const [filtroTipo, setFiltroTipo] = useState({ vencimento: false, pagamento: false, todos: true });
+  const [tipos, setTipos] = useState<{ id: number, nome: string }[]>([]);
+  const [fornecedores, setFornecedores] = useState<{ id: number, nome: string }[]>([]);
+  const [filiais, setFiliais] = useState<{ id: number, nome: string }[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [alert, setAlert] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({ open: false, message: '', severity: 'info' });
+  
+  // Estados para o modal de pagamento
+  const [modalPagamento, setModalPagamento] = useState(false);
+  const [tituloSelecionado, setTituloSelecionado] = useState<number | null>(null);
+  const [dataPagamento, setDataPagamento] = useState(new Date().toISOString().slice(0, 10));
+  const [multa, setMulta] = useState<string>('0');
+  const [juros, setJuros] = useState<string>('0');
+  
+  // Estados para o modal de edição
+  const [modalEdicao, setModalEdicao] = useState(false);
+  const [tituloEdicao, setTituloEdicao] = useState<TituloCompleto | null>(null);
+  
+
+  // Função para carregar dados (definida fora do useEffect para ser reutilizável)
+  const carregarDados = async () => {
+    setIsLoading(true);
+    try {
+      // Carregar dados dos dropdowns e títulos
+      const [dadosTipos, dadosFornecedores, dadosFiliais, dadosTitulos] = await Promise.all([
+        tiposFornecedoresService.getAll(),
+        fornecedoresService.getAll(),
+        filiaisService.getAll(),
+        titulosService.getAll()
+      ]);
+
+      // Mapear tipos para o formato {id, nome}
+      const tiposFormatados = dadosTipos.map(t => ({
+        id: t.id,
+        nome: t.nome
+      }));
+      setTipos(tiposFormatados);
+
+      // Mapear fornecedores para o formato {id, nome}
+      const fornecedoresFormatados = dadosFornecedores.map(f => ({
+        id: f.id,
+        nome: f.nome
+      }));
+      setFornecedores(fornecedoresFormatados);
+
+      // Mapear filiais para o formato {id, nome}
+      const filiaisFormatadas = dadosFiliais.map(f => ({
+        id: f.id,
+        nome: f.nome
+      }));
+      setFiliais(filiaisFormatadas);
+
+      // Processar os títulos
+      const titulosFormatados = dadosTitulos.map(titulo => {
+        const fornecedor = fornecedoresFormatados.find(f => f.id === titulo.fornecedor_id);
+        const filial = filiaisFormatadas.find(f => f.id === titulo.filial_id);
+        const tipo = tiposFormatados.find(t => t.id === titulo.tipo_id);
+
+        return {
+          id: titulo.id,
+          numero: titulo.numero,
+          tipo: tipo?.nome || 'Não especificado',
+          tipo_id: titulo.tipo_id,
+          fornecedor: fornecedor?.nome || 'Não especificado',
+          fornecedor_id: titulo.fornecedor_id,
+          filial: filial?.nome || 'Não especificada',
+          filial_id: titulo.filial_id,
+          vencimento: titulo.data_vencimento,
+          data_emissao: titulo.data_emissao,
+          pagamento: titulo.data_pagamento || '',
+          data_pagamento: titulo.data_pagamento,
+          valor: titulo.valor.toString(),
+          status: titulo.status,
+          observacao: titulo.observacao,
+          multa: titulo.multa,
+          juros: titulo.juros
+        };
+      });
+      
+      setTitulos(titulosFormatados);
+      setTitulosFiltrados(titulosFormatados);
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
+      setAlert({
+        open: true,
+        message: 'Erro ao carregar dados. Por favor, tente novamente.',
+        severity: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Carregar dados iniciais
+  useEffect(() => {
+    carregarDados();
+  }, []);
+
+  const handleFiltroChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const novosFiltros = { ...filtros, [e.target.name]: e.target.value };
+    setFiltros(novosFiltros);
+    aplicarFiltros(novosFiltros, filtroTipo);
+  };
+
+  const handleFiltroTipoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, checked } = e.target;
+    
+    // Se algum tipo for marcado, desmarca os outros
+    const novoFiltroTipo = {
+      vencimento: name === 'vencimento' ? checked : false,
+      pagamento: name === 'pagamento' ? checked : false,
+      todos: name === 'todos' ? checked : false
+    };
+    
+    // Se todos forem desmarcados, ativa o 'todos'
+    if (!novoFiltroTipo.vencimento && !novoFiltroTipo.pagamento && !novoFiltroTipo.todos) {
+      novoFiltroTipo.todos = true;
+    }
+    
+    setFiltroTipo(novoFiltroTipo);
+    aplicarFiltros(filtros, novoFiltroTipo);
+  };
+
+  const aplicarFiltros = (filtrosAtuais = filtros, tiposFiltro = filtroTipo) => {
+    let resultado = [...titulos];
+    
+    // Filtrar por tipo
+    if (filtrosAtuais.tipo) {
+      resultado = resultado.filter(titulo => titulo.tipo === filtrosAtuais.tipo);
+    }
+    
+    // Filtrar por fornecedor
+    if (filtrosAtuais.fornecedor) {
+      resultado = resultado.filter(titulo => titulo.fornecedor === filtrosAtuais.fornecedor);
+    }
+    
+    // Filtrar por filial
+    if (filtrosAtuais.filial) {
+      resultado = resultado.filter(titulo => titulo.filial === filtrosAtuais.filial);
+    }
+    
+    // Filtrar por período (data inicial e final) baseado no tipo de filtro selecionado
+    if (filtrosAtuais.dataInicial || filtrosAtuais.dataFinal) {
+      // Apenas aplica o filtro se não estiver no modo "todos"
+      if (!tiposFiltro.todos) {
+        const dataInicial = filtrosAtuais.dataInicial ? new Date(filtrosAtuais.dataInicial) : null;
+        const dataFinal = filtrosAtuais.dataFinal ? new Date(filtrosAtuais.dataFinal) : null;
+        
+        resultado = resultado.filter(titulo => {
+          // Determina qual campo de data usar baseado no tipo de filtro
+          const dataCampo = tiposFiltro.vencimento 
+            ? new Date(titulo.vencimento) 
+            : tiposFiltro.pagamento && titulo.pagamento 
+              ? new Date(titulo.pagamento) 
+              : null;
+          
+          // Se não tiver a data necessária ou for nula, não passa no filtro
+          if (!dataCampo) {
+            return tiposFiltro.pagamento ? false : true; // Se for filtro de pagamento, só mostra os pagos
+          }
+          
+          // Aplica o filtro baseado nas datas fornecidas
+          const passaFiltroInicial = !dataInicial || dataCampo >= dataInicial;
+          const passaFiltroFinal = !dataFinal || dataCampo <= dataFinal;
+          
+          return passaFiltroInicial && passaFiltroFinal;
+        });
+      }
+    }
+    
+    // Se o filtro for por pagamento, só mostra títulos pagos
+    if (tiposFiltro.pagamento && !tiposFiltro.todos) {
+      resultado = resultado.filter(titulo => titulo.pagamento !== null && titulo.pagamento !== '');
+    }
+    
+    setTitulosFiltrados(resultado);
+  };
+
+  // Funções para ações
+  const handlePagar = (id: number) => {
+    // Em vez de processar o pagamento imediatamente, abrimos o modal
+    setTituloSelecionado(id);
+    setDataPagamento(new Date().toISOString().slice(0, 10));
+    setMulta('0');
+    setJuros('0');
+    setModalPagamento(true);
+  };
+  
+  // Função para abrir o modal de edição
+  const handleEditar = (titulo: TituloCompleto) => {
+    setTituloEdicao(titulo);
+    setMulta(titulo.multa?.toString() || '0');
+    setJuros(titulo.juros?.toString() || '0');
+    setModalEdicao(true);
+  };
+
+  // Função para finalizar o pagamento normal (sem multa/juros)
+  const handleFinalizarPagamento = async () => {
+    if (tituloSelecionado === null) return;
+    
+    try {
+      setIsLoading(true);
+      console.log('Processando pagamento para título ID:', tituloSelecionado);
+      
+      // Buscar o título selecionado
+      const tituloAtual = titulos.find(t => t.id === tituloSelecionado);
+      if (!tituloAtual) {
+        console.error('Título não encontrado');
+        setAlert({
+          open: true,
+          message: 'Título não encontrado. Tente novamente.',
+          severity: 'error'
+        });
+        return;
+      }
+      
+      // Preparar dados para atualização
+      const dadosAtualizacao = {
+        status: 'pago' as const,
+        data_pagamento: dataPagamento
+      };
+      
+      console.log('Dados de atualização:', dadosAtualizacao);
+      
+      // Atualizar no Supabase
+      const resultado = await titulosService.update(tituloSelecionado, dadosAtualizacao);
+      console.log('Resultado da atualização:', resultado);
+      
+      if (resultado) {
+        // Atualizar o estado local com a nova data de pagamento
+        const novosTitulos = titulos.map(t => {
+          if (t.id === tituloSelecionado) {
+            return {
+              ...t,
+              status: 'pago',
+              pagamento: dataPagamento,
+              data_pagamento: dataPagamento
+            };
+          }
+          return t;
+        });
+        
+        setTitulos(novosTitulos);
+        
+        // Atualizar os títulos filtrados também
+        const novosTitulosFiltrados = titulosFiltrados.map(t => {
+          if (t.id === tituloSelecionado) {
+            return {
+              ...t,
+              status: 'pago',
+              pagamento: dataPagamento,
+              data_pagamento: dataPagamento
+            };
+          }
+          return t;
+        });
+        
+        setTitulosFiltrados(novosTitulosFiltrados);
+        
+        // Mostrar alerta de sucesso
+        setAlert({
+          open: true,
+          message: 'Título pago com sucesso!',
+          severity: 'success'
+        });
+        
+        // Fechar o modal
+        setModalPagamento(false);
+      } else {
+        throw new Error('Erro ao atualizar título no Supabase');
+      }
+    } catch (error) {
+      console.error('Erro ao pagar título:', error);
+      setAlert({
+        open: true,
+        message: 'Erro ao pagar título. Tente novamente.',
+        severity: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Função para confirmar pagamento com multa e juros
+  const handleConfirmarPagamentoComMultaJuros = async () => {
+    if (tituloSelecionado === null) return;
+    
+    try {
+      setIsLoading(true);
+      console.log('Processando pagamento com multa/juros para título ID:', tituloSelecionado);
+      
+      const multaValor = parseFloat(multa) || 0;
+      const jurosValor = parseFloat(juros) || 0;
+      
+      // Buscar o título selecionado
+      const tituloAtual = titulos.find(t => t.id === tituloSelecionado);
+      if (!tituloAtual) {
+        console.error('Título não encontrado');
+        setAlert({
+          open: true,
+          message: 'Título não encontrado. Tente novamente.',
+          severity: 'error'
+        });
+        return;
+      }
+      
+      // Preparar dados para atualização
+      const dadosAtualizacao = {
+        status: 'pago' as const,
+        data_pagamento: dataPagamento,
+        multa: multaValor,
+        juros: jurosValor
+      };
+      
+      console.log('Dados de atualização com multa/juros:', dadosAtualizacao);
+      
+      // Atualizar no Supabase
+      const resultado = await titulosService.update(tituloSelecionado, dadosAtualizacao);
+      console.log('Resultado da atualização:', resultado);
+      
+      if (resultado) {
+        // Atualizar o estado local com a nova data de pagamento
+        const novosTitulos = titulos.map(t => {
+          if (t.id === tituloSelecionado) {
+            return {
+              ...t,
+              status: 'pago',
+              pagamento: dataPagamento,
+              data_pagamento: dataPagamento,
+              multa: multaValor,
+              juros: jurosValor
+            };
+          }
+          return t;
+        });
+        
+        setTitulos(novosTitulos);
+        
+        // Atualizar os títulos filtrados também
+        const novosTitulosFiltrados = titulosFiltrados.map(t => {
+          if (t.id === tituloSelecionado) {
+            return {
+              ...t,
+              status: 'pago',
+              pagamento: dataPagamento,
+              data_pagamento: dataPagamento,
+              multa: multaValor,
+              juros: jurosValor
+            };
+          }
+          return t;
+        });
+        
+        setTitulosFiltrados(novosTitulosFiltrados);
+        
+        // Mostrar alerta de sucesso
+        setAlert({
+          open: true,
+          message: `Título pago com sucesso! Multa: R$ ${multaValor.toFixed(2)} | Juros: R$ ${jurosValor.toFixed(2)}`,
+          severity: 'success'
+        });
+        
+        // Fechar o modal
+        setModalPagamento(false);
+      } else {
+        throw new Error('Erro ao atualizar título no Supabase');
+      }
+    } catch (error) {
+      console.error('Erro ao pagar título com multa e juros:', error);
+      setAlert({
+        open: true,
+        message: 'Erro ao pagar título. Tente novamente.',
+        severity: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Função para salvar edição de título
+  const handleSalvarEdicao = async () => {
+    if (!tituloEdicao) return;
+    
+    try {
+      setIsLoading(true);
+      console.log('Processando edição para título ID:', tituloEdicao.id);
+      
+      const multaValor = parseFloat(multa) || 0;
+      const jurosValor = parseFloat(juros) || 0;
+      
+      // Preparar dados para atualização
+      const dadosAtualizacao = {
+        multa: multaValor,
+        juros: jurosValor
+      };
+      
+      console.log('Dados de atualização:', dadosAtualizacao);
+      
+      // Atualizar no Supabase
+      const resultado = await titulosService.update(tituloEdicao.id, dadosAtualizacao);
+      console.log('Resultado da atualização:', resultado);
+      
+      if (resultado) {
+        // Atualizar o estado local com os novos valores de multa e juros
+        const novosTitulos = titulos.map(t => {
+          if (t.id === tituloEdicao.id) {
+            return {
+              ...t,
+              multa: multaValor,
+              juros: jurosValor
+            };
+          }
+          return t;
+        });
+        
+        setTitulos(novosTitulos);
+        
+        // Atualizar os títulos filtrados também
+        const novosTitulosFiltrados = titulosFiltrados.map(t => {
+          if (t.id === tituloEdicao.id) {
+            return {
+              ...t,
+              multa: multaValor,
+              juros: jurosValor
+            };
+          }
+          return t;
+        });
+        
+        setTitulosFiltrados(novosTitulosFiltrados);
+        
+        // Mostrar alerta de sucesso
+        setAlert({
+          open: true,
+          message: 'Edição salva com sucesso!',
+          severity: 'success'
+        });
+        
+        // Fechar o modal
+        setModalEdicao(false);
+      } else {
+        throw new Error('Erro ao atualizar título no Supabase');
+      }
+    } catch (error) {
+      console.error('Erro ao salvar edição:', error);
+      setAlert({
+        open: true,
+        message: 'Erro ao salvar edição. Tente novamente.',
+        severity: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('Tem certeza que deseja excluir este título?')) {
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      const sucesso = await titulosService.delete(id);
+      
+      if (sucesso) {
+        setTitulos(titulos.filter(t => t.id !== id));
+        setTitulosFiltrados(titulosFiltrados.filter(t => t.id !== id));
+        
+        setAlert({
+          open: true,
+          message: 'Título excluído com sucesso!',
+          severity: 'success'
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao excluir título:', error);
+      setAlert({
+        open: true,
+        message: 'Erro ao excluir título. Tente novamente.',
+        severity: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleRelatorio = () => {
+    // Abrir uma nova janela para o relatório
+    const janelaRelatorio = window.open('', '_blank', 'width=800,height=600');
+    if (!janelaRelatorio) {
+      setAlert({
+        open: true,
+        message: 'Por favor, permita pop-ups para imprimir o relatório.',
+        severity: 'warning'
+      });
+      return;
+    }
+    
+    // Escrever o conteúdo do relatório na nova janela
+    janelaRelatorio.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Relatório de Títulos</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          h1, h2 { text-align: center; color: #333; }
+          .data { text-align: center; margin-bottom: 20px; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+          th { background-color: #f2f2f2; }
+          .total-row td { font-weight: bold; background-color: #f9f9f9; }
+          .resumo { margin-top: 30px; }
+          .filtros { margin-bottom: 20px; }
+          .filtro-item { display: inline-block; margin-right: 15px; margin-bottom: 5px; }
+          @media print {
+            button { display: none; }
+            body { margin: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Relatório de Títulos</h1>
+        <div class="data">Data de emissão: ${formatDateToBrazilian(new Date().toISOString())}</div>
+        
+        <div class="filtros">
+          <h2>Filtros Aplicados</h2>
+          ${filtros.tipo ? `<div class="filtro-item">Tipo: ${filtros.tipo}</div>` : ''}
+          ${filtros.fornecedor ? `<div class="filtro-item">Fornecedor: ${filtros.fornecedor}</div>` : ''}
+          ${filtros.filial ? `<div class="filtro-item">Filial: ${filtros.filial}</div>` : ''}
+          ${filtroTipo.vencimento ? `<div class="filtro-item">Filtro: Por Data de Vencimento</div>` : ''}
+          ${filtroTipo.pagamento ? `<div class="filtro-item">Filtro: Por Data de Pagamento</div>` : ''}
+          ${filtroTipo.todos ? `<div class="filtro-item">Filtro: Todas as Datas</div>` : ''}
+          ${filtros.dataInicial ? `<div class="filtro-item">Data Inicial: ${filtros.dataInicial}</div>` : ''}
+          ${filtros.dataFinal ? `<div class="filtro-item">Data Final: ${filtros.dataFinal}</div>` : ''}
+        </div>
+        
+        <table>
+          <thead>
+            <tr>
+              <th>Número</th>
+              <th>Tipo</th>
+              <th>Fornecedor</th>
+              <th>Filial</th>
+              <th>Emissão</th>
+              <th>Vencimento</th>
+              <th>Pagamento</th>
+              <th style="text-align: right">Valor (R$)</th>
+              <th style="text-align: right">Multa (R$)</th>
+              <th style="text-align: right">Juros (R$)</th>
+              <th style="text-align: right">Valor Final (R$)</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${titulosFiltrados.map(titulo => `
+              <tr>
+                <td>${titulo.numero || '-'}</td>
+                <td>${titulo.tipo}</td>
+                <td>${titulo.fornecedor}</td>
+                <td>${titulo.filial}</td>
+                <td>${titulo.data_emissao ? formatDateToBrazilian(titulo.data_emissao) : '-'}</td>
+                <td>${titulo.vencimento ? formatDateToBrazilian(titulo.vencimento) : '-'}</td>
+                <td>${titulo.pagamento ? formatDateToBrazilian(titulo.pagamento) : '-'}</td>
+                <td style="text-align: right">${parseFloat(titulo.valor.toString()).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                <td style="text-align: right">${titulo.multa ? parseFloat(titulo.multa.toString()).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}</td>
+                <td style="text-align: right">${titulo.juros ? parseFloat(titulo.juros.toString()).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}</td>
+                <td style="text-align: right">${(parseFloat(titulo.valor.toString()) + (titulo.multa ? parseFloat(titulo.multa.toString()) : 0) + (titulo.juros ? parseFloat(titulo.juros.toString()) : 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                <td>${titulo.status === 'pago' ? 'Pago' : titulo.status === 'pendente' ? 'Pendente' : titulo.status}</td>
+              </tr>
+            `).join('')}
+            <tr class="total-row">
+              <td colspan="7" style="text-align: right">Total:</td>
+              <td style="text-align: right">
+                ${titulosFiltrados
+                  .reduce((acc, titulo) => acc + parseFloat(titulo.valor.toString()), 0)
+                  .toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </td>
+              <td style="text-align: right">
+                ${titulosFiltrados
+                  .reduce((acc, titulo) => acc + (titulo.multa ? parseFloat(titulo.multa.toString()) : 0), 0)
+                  .toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </td>
+              <td style="text-align: right">
+                ${titulosFiltrados
+                  .reduce((acc, titulo) => acc + (titulo.juros ? parseFloat(titulo.juros.toString()) : 0), 0)
+                  .toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </td>
+              <td style="text-align: right">
+                ${titulosFiltrados
+                  .reduce((acc, titulo) => acc + parseFloat(titulo.valor.toString()) + (titulo.multa ? parseFloat(titulo.multa.toString()) : 0) + (titulo.juros ? parseFloat(titulo.juros.toString()) : 0), 0)
+                  .toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+        
+        <div class="resumo">
+          <h2>Resumo</h2>
+          <div>Total de títulos: ${titulosFiltrados.length}</div>
+          <div>
+            Títulos pagos: ${titulosFiltrados.filter(t => t.status === 'pago').length} 
+            (Valor: R$ ${titulosFiltrados
+              .filter(t => t.status === 'pago')
+              .reduce((acc, titulo) => acc + parseFloat(titulo.valor.toString()), 0)
+              .toLocaleString('pt-BR', { minimumFractionDigits: 2 })},
+            Multa: R$ ${titulosFiltrados
+              .filter(t => t.status === 'pago')
+              .reduce((acc, titulo) => acc + (titulo.multa ? parseFloat(titulo.multa.toString()) : 0), 0)
+              .toLocaleString('pt-BR', { minimumFractionDigits: 2 })},
+            Juros: R$ ${titulosFiltrados
+              .filter(t => t.status === 'pago')
+              .reduce((acc, titulo) => acc + (titulo.juros ? parseFloat(titulo.juros.toString()) : 0), 0)
+              .toLocaleString('pt-BR', { minimumFractionDigits: 2 })},
+            Total: R$ ${titulosFiltrados
+              .filter(t => t.status === 'pago')
+              .reduce((acc, titulo) => acc + parseFloat(titulo.valor.toString()) + (titulo.multa ? parseFloat(titulo.multa.toString()) : 0) + (titulo.juros ? parseFloat(titulo.juros.toString()) : 0), 0)
+              .toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
+          </div>
+          <div>
+            Títulos pendentes: ${titulosFiltrados.filter(t => t.status === 'pendente').length}
+            (R$ ${titulosFiltrados
+              .filter(t => t.status === 'pendente')
+              .reduce((acc, titulo) => acc + parseFloat(titulo.valor.toString()), 0)
+              .toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
+          </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px;">
+          <button onclick="window.print()">Imprimir</button>
+        </div>
+      </body>
+      </html>
+    `);
+    
+    // Fechar o documento para finalizar o carregamento
+    janelaRelatorio.document.close();
+  };
+  
+  const handleCloseAlert = () => {
+    setAlert({ ...alert, open: false });
+  };
+
+  return (
+    <Box sx={{ position: 'relative' }}>
+      {/* Loading Overlay */}
+      {isLoading && (
+        <Box sx={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999
+        }}>
+          <CircularProgress color="primary" size={60} />
+        </Box>
+      )}
+      
+      {/* Snackbar para feedback */}
+      <Snackbar
+        open={alert.open}
+        autoHideDuration={6000}
+        onClose={handleCloseAlert}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: '100%' }}>
+          {alert.message}
+        </Alert>
+      </Snackbar>
+
+      {/* Modal de pagamento */}
+      <Dialog open={modalPagamento} onClose={() => setModalPagamento(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Registrar Pagamento</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Informe a data de pagamento e, caso necessário, valores de multa e juros.
+          </DialogContentText>
+          
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            <TextField
+              label="Data de Pagamento"
+              type="date"
+              fullWidth
+              value={dataPagamento}
+              onChange={(e) => setDataPagamento(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              required
+            />
+            
+            <Typography variant="subtitle2" sx={{ mt: 1 }}>
+              Para pagamentos em atraso, informe os valores de multa e juros:
+            </Typography>
+            
+            <TextField
+              label="Multa"
+              type="number"
+              fullWidth
+              value={multa}
+              onChange={(e) => setMulta(e.target.value)}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                inputProps: { step: '0.01', min: '0' }
+              }}
+            />
+            
+            <TextField
+              label="Juros"
+              type="number"
+              fullWidth
+              value={juros}
+              onChange={(e) => setJuros(e.target.value)}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                inputProps: { step: '0.01', min: '0' }
+              }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
+          <Button 
+            variant="contained" 
+            color="primary" 
+            onClick={handleFinalizarPagamento}
+            disabled={!dataPagamento}
+          >
+            Finalizar Pagamento
+          </Button>
+          <Button 
+            variant="contained" 
+            color="secondary" 
+            onClick={handleConfirmarPagamentoComMultaJuros}
+            disabled={parseFloat(multa) <= 0 && parseFloat(juros) <= 0}
+          >
+            Confirmar com Multa/Juros
+          </Button>
+          <Button onClick={() => setModalPagamento(false)}>Cancelar</Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Modal de edição */}
+      <Dialog open={modalEdicao} onClose={() => setModalEdicao(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Editar Pagamento</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Edite os valores de multa e juros do título.
+          </DialogContentText>
+          
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            <TextField
+              label="Título"
+              value={tituloEdicao?.numero || 'Sem número'}
+              InputProps={{ readOnly: true }}
+              fullWidth
+              disabled
+            />
+            
+            <TextField
+              label="Fornecedor"
+              value={tituloEdicao?.fornecedor || ''}
+              InputProps={{ readOnly: true }}
+              fullWidth
+              disabled
+            />
+            
+            <TextField
+              label="Valor Original"
+              value={tituloEdicao ? `R$ ${parseFloat(tituloEdicao.valor).toFixed(2)}` : ''}
+              InputProps={{ readOnly: true }}
+              fullWidth
+              disabled
+            />
+            
+            <Typography variant="subtitle1" sx={{ mt: 1 }}>
+              Valores de multa e juros:
+            </Typography>
+            
+            <TextField
+              label="Multa"
+              type="number"
+              fullWidth
+              value={multa}
+              onChange={(e) => setMulta(e.target.value)}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                inputProps: { step: '0.01', min: '0' }
+              }}
+            />
+            
+            <TextField
+              label="Juros"
+              type="number"
+              fullWidth
+              value={juros}
+              onChange={(e) => setJuros(e.target.value)}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                inputProps: { step: '0.01', min: '0' }
+              }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            variant="contained" 
+            color="primary" 
+            onClick={handleSalvarEdicao}
+          >
+            Salvar Alterações
+          </Button>
+          <Button onClick={() => setModalEdicao(false)}>Cancelar</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Typography variant="h4" gutterBottom color="primary">
+        Extrato de Títulos
+      </Typography>
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>Filtros</Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
+              <TextField select label="Tipo" name="tipo" value={filtros.tipo} onChange={handleFiltroChange} fullWidth>
+                <MenuItem value="">Todos</MenuItem>
+                {tipos.length === 0 ? (
+                  <MenuItem disabled>Carregando tipos...</MenuItem>
+                ) : (
+                  tipos.map(tipo => <MenuItem key={tipo.id} value={tipo.nome}>{tipo.nome}</MenuItem>)
+                )}
+              </TextField>
+            </Box>
+            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
+              <TextField select label="Fornecedor" name="fornecedor" value={filtros.fornecedor} onChange={handleFiltroChange} fullWidth>
+                <MenuItem value="">Todos</MenuItem>
+                {fornecedores.length === 0 ? (
+                  <MenuItem disabled>Carregando fornecedores...</MenuItem>
+                ) : (
+                  fornecedores.map(fornecedor => <MenuItem key={fornecedor.id} value={fornecedor.nome}>{fornecedor.nome}</MenuItem>)
+                )}
+              </TextField>
+            </Box>
+            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
+              <TextField select label="Filial" name="filial" value={filtros.filial} onChange={handleFiltroChange} fullWidth>
+                <MenuItem value="">Todas</MenuItem>
+                {filiais.length === 0 ? (
+                  <MenuItem disabled>Carregando filiais...</MenuItem>
+                ) : (
+                  filiais.map(filial => <MenuItem key={filial.id} value={filial.nome}>{filial.nome}</MenuItem>)
+                )}
+              </TextField>
+            </Box>
+            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
+              <FormGroup row>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={filtroTipo.vencimento}
+                      onChange={handleFiltroTipoChange}
+                      name="vencimento"
+                    />
+                  }
+                  label="Dt. Vencimento"
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={filtroTipo.pagamento}
+                      onChange={handleFiltroTipoChange}
+                      name="pagamento"
+                    />
+                  }
+                  label="Dt. Pagamento"
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={filtroTipo.todos}
+                      onChange={handleFiltroTipoChange}
+                      name="todos"
+                    />
+                  }
+                  label="Todas as Datas"
+                />
+              </FormGroup>
+            </Box>
+            <Box sx={{ flex: '1 1 400px', minWidth: '300px' }}>
+              <Stack direction="row" spacing={1}>
+                <TextField label="Data Inicial" name="dataInicial" type="date" value={filtros.dataInicial} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth disabled={filtroTipo.todos} />
+                <TextField label="Data Final" name="dataFinal" type="date" value={filtros.dataFinal} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth disabled={filtroTipo.todos} />
+              </Stack>
+            </Box>
+          </Box>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="h6">Extrato de Títulos</Typography>
+            <Button variant="outlined" startIcon={<PrintIcon />} onClick={handleRelatorio}>Relatório</Button>
+          </Box>
+          <List>
+            {titulosFiltrados.length === 0 && (
+              <Typography color="textSecondary">Nenhum título encontrado.</Typography>
+            )}
+            {titulosFiltrados.map(titulo => (
+              <ListItem key={titulo.id} divider>
+                <ListItemText
+                  primary={`${titulo.numero || ''} | ${titulo.tipo} | ${titulo.fornecedor} | ${titulo.filial}`}
+                  secondary={`Vencimento: ${titulo.vencimento} | Valor: R$ ${parseFloat(titulo.valor).toFixed(2)} | Status: ${titulo.status || 'Em aberto'} | Pagamento: ${titulo.pagamento || '-'}`}
+                />
+                <ListItemSecondaryAction>
+                  <IconButton edge="end" aria-label="pagar" onClick={() => handlePagar(titulo.id)} disabled={titulo.status === 'pago'}>
+                    <PaymentIcon />
+                  </IconButton>
+                  {titulo.status === 'pago' && (
+                    <IconButton edge="end" aria-label="editar" onClick={() => handleEditar(titulo)}>
+                      <EditIcon />
+                    </IconButton>
+                  )}
+                  <IconButton edge="end" aria-label="delete" onClick={() => handleDelete(titulo.id)}>
+                    <DeleteIcon />
+                  </IconButton>
+                </ListItemSecondaryAction>
+              </ListItem>
+            ))}
+          </List>
+        </CardContent>
+      </Card>
+    </Box>
+  );
+};
+
+
+
+export default EmissaoTitulos;

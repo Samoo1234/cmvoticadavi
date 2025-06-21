@@ -101,7 +101,13 @@ export const fornecedoresService = {
     
     if (error) {
       console.error(`Erro ao excluir fornecedor ${id}:`, error);
-      return false;
+      
+      // Verificar se é erro de integridade referencial
+      if (error.code === '23503' || error.message.includes('still referenced')) {
+        throw new Error('Este fornecedor não pode ser excluído porque possui títulos ou outros registros vinculados. Exclua primeiro os registros relacionados.');
+      }
+      
+      throw new Error('Erro ao excluir fornecedor. Tente novamente.');
     }
     
     return true;

@@ -352,5 +352,21 @@ export const despesasService = {
     }
 
     return true;
+  },
+
+  // Método para compatibilidade com outras páginas
+  async getCategorias(): Promise<CategoriaDespesa[]> {
+    return categoriasDespesasService.getAll();
+  },
+
+  // Métodos específicos para cada tipo de despesa
+  async getCategoriasFixas(): Promise<CategoriaDespesa[]> {
+    const todasCategorias = await categoriasDespesasService.getAll();
+    return todasCategorias.filter(cat => cat.tipo === 'fixa' || cat.tipo === 'ambos');
+  },
+
+  async getCategoriasDiversas(): Promise<CategoriaDespesa[]> {
+    const todasCategorias = await categoriasDespesasService.getAll();
+    return todasCategorias.filter(cat => cat.tipo === 'variavel' || cat.tipo === 'ambos');
   }
 };

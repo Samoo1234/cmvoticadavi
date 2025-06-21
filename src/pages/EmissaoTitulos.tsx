@@ -30,12 +30,13 @@ import {
 
 import DeleteIcon from '@mui/icons-material/Delete';
 import PaymentIcon from '@mui/icons-material/Payment';
-import PrintIcon from '@mui/icons-material/Print';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import EditIcon from '@mui/icons-material/Edit';
 import { filiaisService } from '../services/filiaisService';
 import { fornecedoresService } from '../services/fornecedoresService';
 import { tiposFornecedoresService } from '../services/tiposFornecedoresService';
 import { titulosService } from '../services/titulosService';
+import { RelatoriosPDFService } from '../services/relatoriosPDFService';
 
 interface Titulo {
   id: number;
@@ -550,158 +551,37 @@ const EmissaoTitulos: React.FC = () => {
     }
   };
   
-  const handleRelatorio = () => {
-    // Abrir uma nova janela para o relatório
-    const janelaRelatorio = window.open('', '_blank', 'width=800,height=600');
-    if (!janelaRelatorio) {
+  const handleGerarPDF = () => {
+    try {
+      const relatorioService = new RelatoriosPDFService();
+      
+      const filtrosRelatorio = {
+        tipo: filtros.tipo,
+        fornecedor: filtros.fornecedor,
+        filial: filtros.filial,
+        dataInicial: filtros.dataInicial,
+        dataFinal: filtros.dataFinal,
+        filtroTipo: filtroTipo
+      };
+      
+      const doc = relatorioService.gerarRelatorioTitulos(titulosFiltrados, filtrosRelatorio);
+      
+      const nomeArquivo = `relatorio-titulos-${new Date().toISOString().slice(0, 10)}.pdf`;
+      relatorioService.salvar(nomeArquivo);
+      
       setAlert({
         open: true,
-        message: 'Por favor, permita pop-ups para imprimir o relatório.',
-        severity: 'warning'
+        message: 'Relatório PDF gerado com sucesso!',
+        severity: 'success'
       });
-      return;
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      setAlert({
+        open: true,
+        message: 'Erro ao gerar relatório PDF. Tente novamente.',
+        severity: 'error'
+      });
     }
-    
-    // Escrever o conteúdo do relatório na nova janela
-    janelaRelatorio.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Relatório de Títulos</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          h1, h2 { text-align: center; color: #333; }
-          .data { text-align: center; margin-bottom: 20px; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-          th { background-color: #f2f2f2; }
-          .total-row td { font-weight: bold; background-color: #f9f9f9; }
-          .resumo { margin-top: 30px; }
-          .filtros { margin-bottom: 20px; }
-          .filtro-item { display: inline-block; margin-right: 15px; margin-bottom: 5px; }
-          @media print {
-            button { display: none; }
-            body { margin: 0; }
-          }
-        </style>
-      </head>
-      <body>
-        <h1>Relatório de Títulos</h1>
-        <div class="data">Data de emissão: ${formatDateToBrazilian(new Date().toISOString())}</div>
-        
-        <div class="filtros">
-          <h2>Filtros Aplicados</h2>
-          ${filtros.tipo ? `<div class="filtro-item">Tipo: ${filtros.tipo}</div>` : ''}
-          ${filtros.fornecedor ? `<div class="filtro-item">Fornecedor: ${filtros.fornecedor}</div>` : ''}
-          ${filtros.filial ? `<div class="filtro-item">Filial: ${filtros.filial}</div>` : ''}
-          ${filtroTipo.vencimento ? `<div class="filtro-item">Filtro: Por Data de Vencimento</div>` : ''}
-          ${filtroTipo.pagamento ? `<div class="filtro-item">Filtro: Por Data de Pagamento</div>` : ''}
-          ${filtroTipo.todos ? `<div class="filtro-item">Filtro: Todas as Datas</div>` : ''}
-          ${filtros.dataInicial ? `<div class="filtro-item">Data Inicial: ${filtros.dataInicial}</div>` : ''}
-          ${filtros.dataFinal ? `<div class="filtro-item">Data Final: ${filtros.dataFinal}</div>` : ''}
-        </div>
-        
-        <table>
-          <thead>
-            <tr>
-              <th>Número</th>
-              <th>Tipo</th>
-              <th>Fornecedor</th>
-              <th>Filial</th>
-              <th>Emissão</th>
-              <th>Vencimento</th>
-              <th>Pagamento</th>
-              <th style="text-align: right">Valor (R$)</th>
-              <th style="text-align: right">Multa (R$)</th>
-              <th style="text-align: right">Juros (R$)</th>
-              <th style="text-align: right">Valor Final (R$)</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${titulosFiltrados.map(titulo => `
-              <tr>
-                <td>${titulo.numero || '-'}</td>
-                <td>${titulo.tipo}</td>
-                <td>${titulo.fornecedor}</td>
-                <td>${titulo.filial}</td>
-                <td>${titulo.data_emissao ? formatDateToBrazilian(titulo.data_emissao) : '-'}</td>
-                <td>${titulo.vencimento ? formatDateToBrazilian(titulo.vencimento) : '-'}</td>
-                <td>${titulo.pagamento ? formatDateToBrazilian(titulo.pagamento) : '-'}</td>
-                <td style="text-align: right">${parseFloat(titulo.valor.toString()).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                <td style="text-align: right">${titulo.multa ? parseFloat(titulo.multa.toString()).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}</td>
-                <td style="text-align: right">${titulo.juros ? parseFloat(titulo.juros.toString()).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}</td>
-                <td style="text-align: right">${(parseFloat(titulo.valor.toString()) + (titulo.multa ? parseFloat(titulo.multa.toString()) : 0) + (titulo.juros ? parseFloat(titulo.juros.toString()) : 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                <td>${titulo.status === 'pago' ? 'Pago' : titulo.status === 'pendente' ? 'Pendente' : titulo.status}</td>
-              </tr>
-            `).join('')}
-            <tr class="total-row">
-              <td colspan="7" style="text-align: right">Total:</td>
-              <td style="text-align: right">
-                ${titulosFiltrados
-                  .reduce((acc, titulo) => acc + parseFloat(titulo.valor.toString()), 0)
-                  .toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-              </td>
-              <td style="text-align: right">
-                ${titulosFiltrados
-                  .reduce((acc, titulo) => acc + (titulo.multa ? parseFloat(titulo.multa.toString()) : 0), 0)
-                  .toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-              </td>
-              <td style="text-align: right">
-                ${titulosFiltrados
-                  .reduce((acc, titulo) => acc + (titulo.juros ? parseFloat(titulo.juros.toString()) : 0), 0)
-                  .toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-              </td>
-              <td style="text-align: right">
-                ${titulosFiltrados
-                  .reduce((acc, titulo) => acc + parseFloat(titulo.valor.toString()) + (titulo.multa ? parseFloat(titulo.multa.toString()) : 0) + (titulo.juros ? parseFloat(titulo.juros.toString()) : 0), 0)
-                  .toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-              </td>
-              <td></td>
-            </tr>
-          </tbody>
-        </table>
-        
-        <div class="resumo">
-          <h2>Resumo</h2>
-          <div>Total de títulos: ${titulosFiltrados.length}</div>
-          <div>
-            Títulos pagos: ${titulosFiltrados.filter(t => t.status === 'pago').length} 
-            (Valor: R$ ${titulosFiltrados
-              .filter(t => t.status === 'pago')
-              .reduce((acc, titulo) => acc + parseFloat(titulo.valor.toString()), 0)
-              .toLocaleString('pt-BR', { minimumFractionDigits: 2 })},
-            Multa: R$ ${titulosFiltrados
-              .filter(t => t.status === 'pago')
-              .reduce((acc, titulo) => acc + (titulo.multa ? parseFloat(titulo.multa.toString()) : 0), 0)
-              .toLocaleString('pt-BR', { minimumFractionDigits: 2 })},
-            Juros: R$ ${titulosFiltrados
-              .filter(t => t.status === 'pago')
-              .reduce((acc, titulo) => acc + (titulo.juros ? parseFloat(titulo.juros.toString()) : 0), 0)
-              .toLocaleString('pt-BR', { minimumFractionDigits: 2 })},
-            Total: R$ ${titulosFiltrados
-              .filter(t => t.status === 'pago')
-              .reduce((acc, titulo) => acc + parseFloat(titulo.valor.toString()) + (titulo.multa ? parseFloat(titulo.multa.toString()) : 0) + (titulo.juros ? parseFloat(titulo.juros.toString()) : 0), 0)
-              .toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
-          </div>
-          <div>
-            Títulos pendentes: ${titulosFiltrados.filter(t => t.status === 'pendente').length}
-            (R$ ${titulosFiltrados
-              .filter(t => t.status === 'pendente')
-              .reduce((acc, titulo) => acc + parseFloat(titulo.valor.toString()), 0)
-              .toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
-          </div>
-        </div>
-        
-        <div style="text-align: center; margin-top: 30px;">
-          <button onclick="window.print()">Imprimir</button>
-        </div>
-      </body>
-      </html>
-    `);
-    
-    // Fechar o documento para finalizar o carregamento
-    janelaRelatorio.document.close();
   };
   
   const handleCloseAlert = () => {
@@ -967,7 +847,7 @@ const EmissaoTitulos: React.FC = () => {
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
             <Typography variant="h6">Extrato de Títulos</Typography>
-            <Button variant="outlined" startIcon={<PrintIcon />} onClick={handleRelatorio}>Relatório</Button>
+                            <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleGerarPDF}>Gerar PDF</Button>
           </Box>
           <List>
             {titulosFiltrados.length === 0 && (

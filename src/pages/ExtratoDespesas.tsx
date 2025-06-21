@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-// Removemos as importações de jsPDF que estavam causando problemas
 import { 
   Box, 
   Typography, 
@@ -15,74 +14,45 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
-  Tooltip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogContentText,
-  DialogActions,
   Divider,
-  Stack
+  Stack,
+  Chip
 } from '@mui/material';
 
 import PrintIcon from '@mui/icons-material/Print';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import PaymentIcon from '@mui/icons-material/Payment';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import { despesasService, categoriasDespesasService } from '../services/despesasService';
-import type { Despesa, DespesaCompleta, CategoriaDespesa } from '../services/despesasService';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import { despesasFixasService } from '../services/despesasFixasService';
+import { despesasDiversasService } from '../services/despesasDiversasService';
+import { categoriasDespesasService } from '../services/despesasService';
+import type { CategoriaDespesa } from '../services/despesasService';
 import { filiaisService } from '../services/filiaisService';
 import { formatDateToBrazilian } from '../utils/dateUtils';
+import { RelatoriosPDFService } from '../services/relatoriosPDFService';
 
-// Estilos CSS para impressão
-const printStyles = `
-  @media print {
-    /* Ocultar elementos que não devem ser impressos */
-    nav, header, footer, .MuiAppBar-root, .MuiDrawer-root, .no-print {
-      display: none !important;
-    }
-    
-    /* Garantir que o conteúdo do relatório ocupe toda a página */
-    body, html {
-      width: 100% !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      background-color: white !important;
-    }
-    
-    /* Ajustar o conteúdo do relatório */
-    .print-only {
-      display: block !important;
-      width: 100% !important;
-      margin: 0 !important;
-      padding: 0 !important;
-    }
-    
-    /* Remover sombras e bordas para economizar tinta */
-    .MuiCard-root, .MuiPaper-root {
-      box-shadow: none !important;
-      border: 1px solid #ddd !important;
-    }
-    
-    /* Ajustar o tamanho da fonte para impressão */
-    body {
-      font-size: 12pt !important;
-    }
-    
-    /* Garantir que os totais sejam impressos corretamente */
-    .totais {
-      page-break-inside: avoid !important;
-    }
-  }
-`;
+// Interface unificada para o extrato
+interface DespesaExtrato {
+  id: number;
+  nome: string;
+  valor: number;
+  filial_id: number;
+  filial_nome: string;
+  categoria_id?: number;
+  categoria_nome?: string;
+  tipo_despesa: 'fixa' | 'diversa';
+  status: string;
+  data_despesa?: string;
+  data_pagamento?: string;
+  forma_pagamento?: string;
+  periodicidade?: string;
+  dia_vencimento?: number;
+  observacao?: string;
+  created_at?: string;
+}
 
 const ExtratoDespesas: React.FC = () => {
   // Estados para filtros
   const [filtros, setFiltros] = useState({
-    tipoDespesa: '',    // 'fixa', 'variavel' ou ''
+    tipoDespesa: '',    // 'fixa', 'diversa' ou ''
     filial: '',         // ID da filial ou ''
     categoria: '',      // ID da categoria ou ''
     status: '',         // 'pendente', 'pago', 'ativo', 'inativo' ou ''
@@ -91,17 +61,12 @@ const ExtratoDespesas: React.FC = () => {
   });
   
   // Estados para dados
-  const [despesas, setDespesas] = useState<DespesaCompleta[]>([]);
+  const [despesas, setDespesas] = useState<DespesaExtrato[]>([]);
   const [filiais, setFiliais] = useState<{id: number, nome: string}[]>([]);
   const [categorias, setCategorias] = useState<CategoriaDespesa[]>([]);
   
   // Estado para carregamento
   const [carregando, setCarregando] = useState(false);
-  
-  // Estados para diálogos e ações
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [selectedDespesa, setSelectedDespesa] = useState<DespesaCompleta | null>(null);
-  const [pagamentoDialogOpen, setPagamentoDialogOpen] = useState(false);
   
   // Efeito para carregar dados iniciais
   useEffect(() => {
@@ -145,39 +110,97 @@ const ExtratoDespesas: React.FC = () => {
       
       setCarregando(true);
       try {
-        // Buscar todas as despesas do período direto do Supabase
-        let despesasFiltradas = await despesasService.getByPeriodoCompletas(
-          filtros.dataInicial,
-          filtros.dataFinal
-        );
+        // Buscar dados das duas tabelas separadas com informações completas
+        const [despesasFixas, despesasDiversas] = await Promise.all([
+          despesasFixasService.getAllCompletas(),
+          despesasDiversasService.getAllCompletas()
+        ]);
         
-        // Aplicar filtros adicionais no front-end
+        // Converter despesas fixas para o formato unificado
+        const fixasUnificadas: DespesaExtrato[] = despesasFixas.map(despesa => ({
+          id: despesa.id,
+          nome: despesa.nome,
+          valor: despesa.valor,
+          filial_id: despesa.filial_id,
+          filial_nome: despesa.filial_nome,
+          categoria_id: despesa.categoria_id,
+          categoria_nome: despesa.categoria_nome,
+          tipo_despesa: 'fixa' as const,
+          status: despesa.status,
+          periodicidade: despesa.periodicidade,
+          dia_vencimento: despesa.dia_vencimento,
+          observacao: despesa.observacao,
+          created_at: despesa.created_at
+        }));
+        
+        // Converter despesas diversas para o formato unificado
+        const diversasUnificadas: DespesaExtrato[] = despesasDiversas.map(despesa => ({
+          id: despesa.id,
+          nome: despesa.nome,
+          valor: despesa.valor,
+          filial_id: despesa.filial_id,
+          filial_nome: despesa.filial_nome,
+          categoria_id: despesa.categoria_id,
+          categoria_nome: despesa.categoria_nome,
+          tipo_despesa: 'diversa' as const,
+          status: despesa.status,
+          data_despesa: despesa.data_despesa,
+          data_pagamento: despesa.data_pagamento,
+          forma_pagamento: despesa.forma_pagamento,
+          observacao: despesa.observacao,
+          created_at: despesa.created_at
+        }));
+        
+        // Combinar todas as despesas
+        let todasDespesas = [...fixasUnificadas, ...diversasUnificadas];
+        
+        // Aplicar filtros
         if (filtros.tipoDespesa) {
-          despesasFiltradas = despesasFiltradas.filter(
+          todasDespesas = todasDespesas.filter(
             despesa => despesa.tipo_despesa === filtros.tipoDespesa
           );
         }
         
         if (filtros.filial) {
-          despesasFiltradas = despesasFiltradas.filter(
+          todasDespesas = todasDespesas.filter(
             despesa => despesa.filial_id === parseInt(filtros.filial)
           );
         }
         
         if (filtros.categoria) {
-          despesasFiltradas = despesasFiltradas.filter(
+          todasDespesas = todasDespesas.filter(
             despesa => despesa.categoria_id === parseInt(filtros.categoria)
           );
         }
         
         if (filtros.status) {
-          despesasFiltradas = despesasFiltradas.filter(
+          todasDespesas = todasDespesas.filter(
             despesa => despesa.status === filtros.status
           );
         }
         
-        console.log('Despesas filtradas:', despesasFiltradas);
-        setDespesas(despesasFiltradas);
+        // Filtrar por período para despesas diversas (que têm data_despesa)
+        todasDespesas = todasDespesas.filter(despesa => {
+          if (despesa.tipo_despesa === 'diversa' && despesa.data_despesa) {
+            const dataDespesa = new Date(despesa.data_despesa);
+            const dataInicial = new Date(filtros.dataInicial);
+            const dataFinal = new Date(filtros.dataFinal);
+            return dataDespesa >= dataInicial && dataDespesa <= dataFinal;
+          }
+          // Para despesas fixas, incluir todas (não têm data específica)
+          return despesa.tipo_despesa === 'fixa';
+        });
+        
+        // Ordenar por data (diversas) ou nome (fixas)
+        todasDespesas.sort((a, b) => {
+          if (a.data_despesa && b.data_despesa) {
+            return new Date(b.data_despesa).getTime() - new Date(a.data_despesa).getTime();
+          }
+          return a.nome.localeCompare(b.nome);
+        });
+        
+        console.log('Despesas unificadas:', todasDespesas);
+        setDespesas(todasDespesas);
       } catch (error) {
         console.error("Erro ao buscar despesas:", error);
       } finally {
@@ -196,591 +219,317 @@ const ExtratoDespesas: React.FC = () => {
       [name]: value
     });
   };
-  
-  // Função para gerar e imprimir relatório em formato tabular
+
+  // Função para imprimir
   const handleImprimir = () => {
-    // Criar uma nova janela para o relatório
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('O navegador bloqueou a abertura da janela de impressão. Por favor, permita popups para este site.');
-      return;
-    }
-    
-    // Preparar os dados das despesas fixas e variáveis
-    const despesasFixas = despesas.filter(d => d.tipo_despesa === 'fixa');
-    const despesasVariaveis = despesas.filter(d => d.tipo_despesa === 'variavel');
-    
-    // Gerar HTML para o relatório
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Relatório de Despesas</title>
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            color: #333;
-          }
-          h1, h2 {
-            text-align: center;
-            margin-bottom: 10px;
-          }
-          h3 {
-            margin-top: 20px;
-            margin-bottom: 10px;
-          }
-          .periodo {
-            text-align: center;
-            margin-bottom: 20px;
-            font-size: 14px;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 20px;
-          }
-          th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-            font-size: 12px;
-          }
-          th {
-            background-color: #f2f2f2;
-            font-weight: bold;
-          }
-          tr:nth-child(even) {
-            background-color: #f9f9f9;
-          }
-          .resumo {
-            margin-top: 30px;
-            border-top: 2px solid #333;
-            padding-top: 10px;
-          }
-          .resumo-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 5px;
-          }
-          .total-geral {
-            font-weight: bold;
-            margin-top: 10px;
-            padding-top: 5px;
-            border-top: 1px solid #333;
-          }
-          .observacao {
-            font-style: italic;
-            font-size: 11px;
-          }
-          .valor {
-            text-align: right;
-          }
-          .filtros {
-            margin-bottom: 20px;
-            font-size: 12px;
-          }
-          .print-button {
-            display: block;
-            margin: 20px auto;
-            padding: 8px 16px;
-            background-color: #4285f4;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-          }
-          @media print {
-            .print-button {
-              display: none;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <h1>Relatório de Despesas</h1>
-        <div class="periodo">Período: ${formatDateToBrazilian(filtros.dataInicial)} a ${formatDateToBrazilian(filtros.dataFinal)}</div>
-        
-        <div class="filtros">
-          <strong>Filtros Aplicados:</strong> 
-          ${filtros.tipoDespesa ? `Tipo: ${filtros.tipoDespesa === 'fixa' ? 'Fixas' : 'Variáveis'}, ` : ''}
-          ${filtros.filial ? `Filial: ${filiais.find(f => f.id === Number(filtros.filial))?.nome || filtros.filial}, ` : ''}
-          ${filtros.categoria ? `Categoria: ${categorias.find(c => c.id === Number(filtros.categoria))?.nome || filtros.categoria}, ` : ''}
-          ${filtros.status ? `Status: ${filtros.status}, ` : ''}
-        </div>
-        
-        ${despesasFixas.length > 0 ? `
-        <h3>Despesas Fixas</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Nome</th>
-              <th>Filial</th>
-              <th>Categoria</th>
-              <th>Valor</th>
-              <th>Vencimento</th>
-              <th>Status</th>
-              <th>Observações</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${despesasFixas.map(d => `
-              <tr>
-                <td>${d.nome}</td>
-                <td>${d.filial || 'Não especificado'}</td>
-                <td>${d.categoria || 'Não categorizado'}</td>
-                <td class="valor">R$ ${parseFloat(String(d.valor)).toFixed(2)}</td>
-                <td>${d.data_vencimento ? formatDateToBrazilian(String(d.data_vencimento)) : (d.dia_vencimento ? `Dia ${d.dia_vencimento} de cada mês` : 'Não informado')}</td>
-                <td>${d.status === 'pago' ? 'Pago' : (d.status === 'pendente' ? 'Pendente' : (d.status === 'ativo' ? 'Ativo' : 'Inativo'))}</td>
-                <td>${d.observacao || ''}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-        ` : ''}
-        
-        ${despesasVariaveis.length > 0 ? `
-        <h3>Despesas Variáveis</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Nome</th>
-              <th>Filial</th>
-              <th>Categoria</th>
-              <th>Valor</th>
-              <th>Data</th>
-              <th>Status</th>
-              <th>Observações</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${despesasVariaveis.map(d => `
-              <tr>
-                <td>${d.nome}</td>
-                <td>${d.filial || 'Não especificado'}</td>
-                <td>${d.categoria || 'Não categorizado'}</td>
-                <td class="valor">R$ ${parseFloat(String(d.valor)).toFixed(2)}</td>
-                <td>${formatDateToBrazilian(String(d.data_despesa))}</td>
-                <td>${d.status === 'pago' ? 'Pago' : 'Pendente'}</td>
-                <td>${d.observacao || ''}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-        ` : ''}
-        
-        <div class="resumo">
-          <h3>Resumo do Período</h3>
-          <div class="resumo-item">
-            <span>Total Despesas Fixas:</span>
-            <span>R$ ${totalDespesasFixas.toFixed(2)}</span>
-          </div>
-          <div class="resumo-item">
-            <span>Total Despesas Variáveis:</span>
-            <span>R$ ${totalDespesasVariaveis.toFixed(2)}</span>
-          </div>
-          <div class="resumo-item total-geral">
-            <span>Total Geral:</span>
-            <span>R$ ${(totalDespesasFixas + totalDespesasVariaveis).toFixed(2)}</span>
-          </div>
-        </div>
-        
-        <button class="print-button" onclick="window.print()">Imprimir</button>
-      </body>
-      </html>
-    `;
-    
-    // Escrever o HTML na nova janela
-    printWindow.document.open();
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
-    
-    // Focar na nova janela
-    printWindow.focus();
+    window.print();
   };
-  
-  // Removemos a função de exportação de PDF que utilizava jsPDF
-  
-  // Funções para ações nas despesas
-  const handlePagamento = (despesa: DespesaCompleta) => {
-    setSelectedDespesa(despesa);
-    setPagamentoDialogOpen(true);
-  };
-  
-  const handleEditar = (despesa: DespesaCompleta) => {
-    // Redirecionar para página de edição
-    window.location.href = `/despesas?id=${despesa.id}`;
-  };
-  
-  const handleDelete = (despesa: DespesaCompleta) => {
-    setSelectedDespesa(despesa);
-    setDeleteDialogOpen(true);
-  };
-  
-  const confirmarDelete = async () => {
-    if (!selectedDespesa) return;
-    
+
+  // Função para gerar PDF
+  const handleGerarPDF = () => {
     try {
-      setCarregando(true);
-      const sucesso = await despesasService.delete(selectedDespesa.id);
+      // Converter despesas para o formato do relatório
+      const despesasRelatorio = despesas.map(despesa => ({
+        id: despesa.id,
+        nome: despesa.nome,
+        valor: despesa.valor,
+        filial_nome: despesa.filial_nome,
+        categoria_nome: despesa.categoria_nome,
+        tipo_despesa: despesa.tipo_despesa,
+        status: despesa.status,
+        data_despesa: despesa.data_despesa,
+        data_pagamento: despesa.data_pagamento,
+        forma_pagamento: despesa.forma_pagamento,
+        periodicidade: despesa.periodicidade,
+        dia_vencimento: despesa.dia_vencimento,
+        observacao: despesa.observacao
+      }));
+
+      // Preparar nomes dos filtros para exibição
+      const filialNome = filtros.filial ? filiais.find(f => f.id === parseInt(filtros.filial))?.nome : '';
+      const categoriaNome = filtros.categoria ? categorias.find(c => c.id === parseInt(filtros.categoria))?.nome : '';
+
+      const filtrosRelatorio = {
+        dataInicial: filtros.dataInicial,
+        dataFinal: filtros.dataFinal,
+        tipoDespesa: filtros.tipoDespesa,
+        filial: filialNome,
+        categoria: categoriaNome,
+        status: filtros.status
+      };
+
+      // Gerar PDF
+      const relatorioService = new RelatoriosPDFService();
+      const doc = relatorioService.gerarExtratoDespesas(despesasRelatorio, filtrosRelatorio);
       
-      if (sucesso) {
-        // Remover a despesa da lista local
-        setDespesas(prev => prev.filter(d => d.id !== selectedDespesa.id));
-        setDeleteDialogOpen(false);
-        setSelectedDespesa(null);
-      } else {
-        console.error('Erro ao excluir despesa');
-      }
+      // Salvar PDF
+      const nomeArquivo = `extrato-despesas-${filtros.dataInicial}-a-${filtros.dataFinal}.pdf`;
+      relatorioService.salvar(nomeArquivo);
+      
     } catch (error) {
-      console.error('Erro ao excluir despesa:', error);
-    } finally {
-      setCarregando(false);
+      console.error('Erro ao gerar PDF:', error);
+      alert('Erro ao gerar relatório PDF. Tente novamente.');
     }
   };
-  
-  const confirmarPagamento = async () => {
-    if (!selectedDespesa) return;
-    
-    try {
-      setCarregando(true);
-      const dataPagamento = new Date().toISOString().slice(0, 10);
-      const despesaAtualizada = await despesasService.marcarComoPago(selectedDespesa.id, dataPagamento);
-      
-      if (despesaAtualizada) {
-        // Atualizar a despesa na lista local
-        setDespesas(prev => prev.map(d => d.id === selectedDespesa.id ? {...d, status: 'pago', data_pagamento: dataPagamento} : d));
-        setPagamentoDialogOpen(false);
-        setSelectedDespesa(null);
-      } else {
-        console.error('Erro ao marcar despesa como paga');
-      }
-    } catch (error) {
-      console.error('Erro ao marcar despesa como paga:', error);
-    } finally {
-      setCarregando(false);
-    }
-  };
-  
-  // Calcular totais para o relatório
-  const totalDespesasFixas = despesas
-    .filter(d => d.tipo_despesa === 'fixa')
-    .reduce((sum, d) => sum + parseFloat(String(d.valor)), 0);
-    
-  const totalDespesasVariaveis = despesas
-    .filter(d => d.tipo_despesa === 'variavel')
-    .reduce((sum, d) => sum + parseFloat(String(d.valor)), 0);
-    
-  const totalGeral = totalDespesasFixas + totalDespesasVariaveis;
+
+  // Cálculos de totais
+  const totalGeral = despesas.reduce((acc, despesa) => acc + despesa.valor, 0);
+  const totalFixas = despesas.filter(d => d.tipo_despesa === 'fixa').reduce((acc, despesa) => acc + despesa.valor, 0);
+  const totalDiversas = despesas.filter(d => d.tipo_despesa === 'diversa').reduce((acc, despesa) => acc + despesa.valor, 0);
 
   return (
-    <Box sx={{ maxWidth: '100%', margin: '0 auto', p: 2 }}>
-      {/* Diálogo de confirmação para exclusão */}
-      <Dialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-      >
-        <DialogTitle>Confirmar exclusão</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Tem certeza que deseja excluir a despesa <strong>{selectedDespesa?.nome}</strong>?
-            Esta ação não pode ser desfeita.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)} color="primary">
-            Cancelar
-          </Button>
-          <Button onClick={confirmarDelete} color="error" variant="contained">
-            Excluir
-          </Button>
-        </DialogActions>
-      </Dialog>
-      
-      {/* Diálogo de confirmação para pagamento */}
-      <Dialog
-        open={pagamentoDialogOpen}
-        onClose={() => setPagamentoDialogOpen(false)}
-      >
-        <DialogTitle>Confirmar pagamento</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Confirmar pagamento da despesa <strong>{selectedDespesa?.nome}</strong> no valor de <strong>R$ {selectedDespesa ? parseFloat(String(selectedDespesa.valor)).toFixed(2) : '0.00'}</strong>?
-            A data de pagamento será registrada como hoje.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPagamentoDialogOpen(false)} color="primary">
-            Cancelar
-          </Button>
-          <Button onClick={confirmarPagamento} color="primary" variant="contained">
-            Confirmar Pagamento
-          </Button>
-        </DialogActions>
-      </Dialog>
-      <Typography variant="h4" gutterBottom color="primary">
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h4" gutterBottom>
         Extrato de Despesas
       </Typography>
       
-      <Card sx={{ mb: 3 }} className="no-print">
+      {/* Filtros */}
+      <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom>Filtros</Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
-              <FormControl fullWidth>
-                <InputLabel id="tipo-despesa-label">Tipo de Despesa</InputLabel>
-                <Select
-                  labelId="tipo-despesa-label"
-                  name="tipoDespesa"
-                  value={filtros.tipoDespesa}
-                  label="Tipo de Despesa"
-                  onChange={(e) => handleFiltroChange({target: {name: 'tipoDespesa', value: e.target.value as string}})}
-                >
-                  <MenuItem value="">Todas</MenuItem>
-                  <MenuItem value="fixa">Fixas</MenuItem>
-                  <MenuItem value="variavel">Variáveis</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
+          <Typography variant="h6" gutterBottom>
+            Filtros
+          </Typography>
+          
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
+            <TextField
+              name="dataInicial"
+              label="Data Inicial"
+              type="date"
+              value={filtros.dataInicial}
+              onChange={handleFiltroChange}
+              InputLabelProps={{ shrink: true }}
+              sx={{ minWidth: 150 }}
+            />
             
-            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
-              <FormControl fullWidth>
-                <InputLabel id="filial-label">Filial</InputLabel>
-                <Select
-                  labelId="filial-label"
-                  name="filial"
-                  value={filtros.filial}
-                  label="Filial"
-                  onChange={(e) => handleFiltroChange({target: {name: 'filial', value: e.target.value as string}})}
-                >
-                  <MenuItem value="">Todas</MenuItem>
-                  {filiais.map(filial => (
-                    <MenuItem key={filial.id} value={filial.id}>{filial.nome}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
+            <TextField
+              name="dataFinal"
+              label="Data Final"
+              type="date"
+              value={filtros.dataFinal}
+              onChange={handleFiltroChange}
+              InputLabelProps={{ shrink: true }}
+              sx={{ minWidth: 150 }}
+            />
             
-            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
-              <FormControl fullWidth>
-                <InputLabel id="categoria-label">Categoria</InputLabel>
-                <Select
-                  labelId="categoria-label"
-                  name="categoria"
-                  value={filtros.categoria}
-                  label="Categoria"
-                  onChange={(e) => handleFiltroChange({target: {name: 'categoria', value: e.target.value as string}})}
-                >
-                  <MenuItem value="">Todas</MenuItem>
-                  {categorias.map(categoria => (
-                    <MenuItem key={categoria.id} value={categoria.id}>{categoria.nome}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
-            
-            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
-              <FormControl fullWidth>
-                <InputLabel id="status-label">Status</InputLabel>
-                <Select
-                  labelId="status-label"
-                  name="status"
-                  value={filtros.status}
-                  label="Status"
-                  onChange={(e) => handleFiltroChange({target: {name: 'status', value: e.target.value as string}})}
-                >
-                  <MenuItem value="">Todos</MenuItem>
-                  <MenuItem value="pendente">Pendente</MenuItem>
-                  <MenuItem value="pago">Pago</MenuItem>
-                  <MenuItem value="ativo">Ativo</MenuItem>
-                  <MenuItem value="inativo">Inativo</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            
-            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
-              <TextField 
-                label="Data Inicial" 
-                type="date" 
-                name="dataInicial"
-                value={filtros.dataInicial} 
-                onChange={handleFiltroChange}
-                InputLabelProps={{ shrink: true }}
-                fullWidth
-              />
-            </Box>
-            
-            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
-              <TextField 
-                label="Data Final" 
-                type="date" 
-                name="dataFinal"
-                value={filtros.dataFinal} 
-                onChange={handleFiltroChange}
-                InputLabelProps={{ shrink: true }}
-                fullWidth
-              />
-            </Box>
-            
-            <Box sx={{ flex: '1 1 200px', display: 'flex', alignItems: 'center' }}>
-              <Button 
-                variant="contained" 
-                color="primary"
-                startIcon={<PrintIcon />} 
-                onClick={handleImprimir}
+            <FormControl sx={{ minWidth: 150 }}>
+              <InputLabel>Tipo</InputLabel>
+              <Select
+                name="tipoDespesa"
+                value={filtros.tipoDespesa}
+                onChange={(e) => handleFiltroChange({ target: { name: 'tipoDespesa', value: e.target.value } })}
+                label="Tipo"
               >
-                Gerar Relatório
-              </Button>
-            </Box>
-          </Box>
+                <MenuItem value="">Todas</MenuItem>
+                <MenuItem value="fixa">Fixas</MenuItem>
+                <MenuItem value="diversa">Diversas</MenuItem>
+              </Select>
+            </FormControl>
+            
+            <FormControl sx={{ minWidth: 150 }}>
+              <InputLabel>Filial</InputLabel>
+              <Select
+                name="filial"
+                value={filtros.filial}
+                onChange={(e) => handleFiltroChange({ target: { name: 'filial', value: e.target.value } })}
+                label="Filial"
+              >
+                <MenuItem value="">Todas</MenuItem>
+                {filiais.map(filial => (
+                  <MenuItem key={filial.id} value={filial.id.toString()}>
+                    {filial.nome}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            
+            <FormControl sx={{ minWidth: 150 }}>
+              <InputLabel>Categoria</InputLabel>
+              <Select
+                name="categoria"
+                value={filtros.categoria}
+                onChange={(e) => handleFiltroChange({ target: { name: 'categoria', value: e.target.value } })}
+                label="Categoria"
+              >
+                <MenuItem value="">Todas</MenuItem>
+                {categorias.map(categoria => (
+                  <MenuItem key={categoria.id} value={categoria.id.toString()}>
+                    {categoria.nome}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            
+            <FormControl sx={{ minWidth: 150 }}>
+              <InputLabel>Status</InputLabel>
+              <Select
+                name="status"
+                value={filtros.status}
+                onChange={(e) => handleFiltroChange({ target: { name: 'status', value: e.target.value } })}
+                label="Status"
+              >
+                <MenuItem value="">Todos</MenuItem>
+                <MenuItem value="ativo">Ativo</MenuItem>
+                <MenuItem value="inativo">Inativo</MenuItem>
+                <MenuItem value="pendente">Pendente</MenuItem>
+                <MenuItem value="pago">Pago</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
+          
+          <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
+            <Button
+              variant="contained"
+              startIcon={<PictureAsPdfIcon />}
+              onClick={handleGerarPDF}
+              color="primary"
+            >
+              Gerar PDF
+            </Button>
+            
+            <Button
+              variant="outlined"
+              startIcon={<PrintIcon />}
+              onClick={handleImprimir}
+            >
+              Imprimir
+            </Button>
+          </Stack>
         </CardContent>
       </Card>
-      
-      <Card className="print-only">
+
+      {/* Resumo */}
+      <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Box className="no-print">
-            <Typography variant="h6" gutterBottom>Despesas do Período</Typography>
-          </Box>
+          <Typography variant="h6" gutterBottom>
+            Resumo
+          </Typography>
           
-          <Box className="print-only" sx={{ mb: 3 }}>
-            <Typography variant="h5" align="center" gutterBottom>Relatório de Despesas</Typography>
-            <Typography variant="body1" align="center" gutterBottom>
-              Período: {filtros.dataInicial ? formatDateToBrazilian(filtros.dataInicial) : ''} a {filtros.dataFinal ? formatDateToBrazilian(filtros.dataFinal) : ''}
-            </Typography>
-          </Box>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
+            <Box>
+              <Typography variant="body2" color="textSecondary">
+                Total Geral
+              </Typography>
+              <Typography variant="h6" color="primary">
+                R$ {totalGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </Typography>
+            </Box>
+            
+            <Box>
+              <Typography variant="body2" color="textSecondary">
+                Despesas Fixas
+              </Typography>
+              <Typography variant="h6" color="info.main">
+                R$ {totalFixas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </Typography>
+            </Box>
+            
+            <Box>
+              <Typography variant="body2" color="textSecondary">
+                Despesas Diversas
+              </Typography>
+              <Typography variant="h6" color="warning.main">
+                R$ {totalDiversas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </Typography>
+            </Box>
+            
+            <Box>
+              <Typography variant="body2" color="textSecondary">
+                Total de Registros
+              </Typography>
+              <Typography variant="h6">
+                {despesas.length}
+              </Typography>
+            </Box>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      {/* Lista de Despesas */}
+      <Card>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Despesas ({despesas.length} registros)
+          </Typography>
           
           {carregando ? (
-            <Box display="flex" justifyContent="center" my={3}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
               <CircularProgress />
             </Box>
           ) : (
-            <>
-              {despesas.length === 0 ? (
-                <Typography color="textSecondary" align="center">
-                  Nenhuma despesa encontrada para o período selecionado.
-                </Typography>
-              ) : (
-                <>
-                  <Typography variant="subtitle1" sx={{ mt: 2, fontWeight: 'bold' }}>
-                    Despesas Fixas
-                  </Typography>
-                  <List>
-                    {despesas
-                      .filter(d => d.tipo_despesa === 'fixa')
-                      .map(despesa => (
-                        <ListItem key={despesa.id} divider>
-                          <ListItemText
-                            primary={`${despesa.nome} - ${despesa.filial || 'Não especificado'}`}
-                            secondary={
-                              <>
-                                <div>{`Categoria: ${despesa.categoria || 'Não categorizado'} | Valor: R$ ${parseFloat(String(despesa.valor)).toFixed(2)} | Vencimento: ${despesa.data_vencimento ? formatDateToBrazilian(String(despesa.data_vencimento)) : (despesa.dia_vencimento ? `Dia ${despesa.dia_vencimento} de cada mês` : 'Não informado')}`}</div>
-                                {despesa.observacao && <div><strong>Obs:</strong> {despesa.observacao}</div>}
-                              </>
+            <List>
+              {despesas.map((despesa, index) => (
+                <React.Fragment key={`${despesa.tipo_despesa}-${despesa.id}`}>
+                  <ListItem>
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="subtitle1">
+                            {despesa.nome}
+                          </Typography>
+                          <Chip 
+                            label={despesa.tipo_despesa === 'fixa' ? 'Fixa' : 'Diversa'} 
+                            size="small" 
+                            color={despesa.tipo_despesa === 'fixa' ? 'info' : 'warning'}
+                          />
+                          <Chip 
+                            label={despesa.status} 
+                            size="small" 
+                            color={
+                              despesa.status === 'ativo' || despesa.status === 'pago' ? 'success' : 
+                              despesa.status === 'pendente' ? 'warning' : 'default'
                             }
                           />
-                          <ListItemSecondaryAction>
-                            <Box sx={{ display: 'flex', gap: 1 }}>
-                              <Tooltip title={despesa.status === 'pago' || despesa.status === 'inativo' ? 'Já pago/inativo' : 'Marcar como pago'}>
-                                <span>
-                                  <IconButton 
-                                    edge="end" 
-                                    color={despesa.status === 'pago' ? 'success' : 'default'}
-                                    onClick={() => handlePagamento(despesa)}
-                                    disabled={despesa.status === 'pago' || despesa.status === 'inativo'}
-                                  >
-                                    {despesa.status === 'pago' ? <CheckCircleIcon /> : <PaymentIcon />}
-                                  </IconButton>
-                                </span>
-                              </Tooltip>
-                              <Tooltip title="Editar">
-                                <IconButton edge="end" color="primary" onClick={() => handleEditar(despesa)}>
-                                  <EditIcon />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Excluir">
-                                <IconButton edge="end" color="error" onClick={() => handleDelete(despesa)}>
-                                  <DeleteIcon />
-                                </IconButton>
-                              </Tooltip>
-                            </Box>
-                          </ListItemSecondaryAction>
-                        </ListItem>
-                      ))}
-                  </List>
-                  
-                  <Typography variant="subtitle1" sx={{ mt: 3, fontWeight: 'bold' }}>
-                    Despesas Variáveis
-                  </Typography>
-                  <List>
-                    {despesas
-                      .filter(d => d.tipo_despesa === 'variavel')
-                      .map(despesa => (
-                        <ListItem key={despesa.id} divider>
-                          <ListItemText
-                            primary={`${despesa.nome} - ${despesa.filial || 'Não especificado'}`}
-                            secondary={
-                              <>
-                                <div>{`Categoria: ${despesa.categoria || 'Não categorizado'} | Valor: R$ ${parseFloat(String(despesa.valor)).toFixed(2)} | Data: ${formatDateToBrazilian(String(despesa.data_despesa))}`}</div>
-                                {despesa.observacao && <div><strong>Obs:</strong> {despesa.observacao}</div>}
-                              </>
-                            }
-                          />
-                          <ListItemSecondaryAction>
-                            <Box sx={{ display: 'flex', gap: 1 }}>
-                              <Tooltip title={despesa.status === 'pago' ? 'Já pago' : 'Marcar como pago'}>
-                                <span>
-                                  <IconButton 
-                                    edge="end" 
-                                    color={despesa.status === 'pago' ? 'success' : 'default'}
-                                    onClick={() => handlePagamento(despesa)}
-                                    disabled={despesa.status === 'pago'}
-                                  >
-                                    {despesa.status === 'pago' ? <CheckCircleIcon /> : <PaymentIcon />}
-                                  </IconButton>
-                                </span>
-                              </Tooltip>
-                              <Tooltip title="Editar">
-                                <IconButton edge="end" color="primary" onClick={() => handleEditar(despesa)}>
-                                  <EditIcon />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Excluir">
-                                <IconButton edge="end" color="error" onClick={() => handleDelete(despesa)}>
-                                  <DeleteIcon />
-                                </IconButton>
-                              </Tooltip>
-                            </Box>
-                          </ListItemSecondaryAction>
-                        </ListItem>
-                      ))}
-                  </List>
-                  
-                  <Divider sx={{ my: 3 }} />
-                  
-                  <Box className="totais" sx={{ mt: 2 }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                      Resumo do Período
-                    </Typography>
-                    <Stack spacing={1} sx={{ mt: 1 }}>
-                      <Box display="flex" justifyContent="space-between">
-                        <Typography>Total Despesas Fixas:</Typography>
-                        <Typography fontWeight="bold">R$ {totalDespesasFixas.toFixed(2)}</Typography>
-                      </Box>
-                      <Box display="flex" justifyContent="space-between">
-                        <Typography>Total Despesas Variáveis:</Typography>
-                        <Typography fontWeight="bold">R$ {totalDespesasVariaveis.toFixed(2)}</Typography>
-                      </Box>
-                      <Divider />
-                      <Box display="flex" justifyContent="space-between">
-                        <Typography fontWeight="bold">Total Geral:</Typography>
-                        <Typography fontWeight="bold">R$ {totalGeral.toFixed(2)}</Typography>
-                      </Box>
-                    </Stack>
-                  </Box>
-                </>
+                        </Box>
+                      }
+                      secondary={
+                        <Box>
+                          <Typography variant="body2" color="textSecondary">
+                            <strong>Filial:</strong> {despesa.filial_nome} | 
+                            <strong> Categoria:</strong> {despesa.categoria_nome || 'Sem categoria'} | 
+                            <strong> Valor:</strong> R$ {despesa.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </Typography>
+                          
+                          {despesa.tipo_despesa === 'fixa' && (
+                            <Typography variant="body2" color="textSecondary">
+                              <strong>Periodicidade:</strong> {despesa.periodicidade} | 
+                              <strong> Dia Vencimento:</strong> {despesa.dia_vencimento}
+                            </Typography>
+                          )}
+                          
+                          {despesa.tipo_despesa === 'diversa' && (
+                            <Typography variant="body2" color="textSecondary">
+                              <strong>Data:</strong> {despesa.data_despesa ? formatDateToBrazilian(despesa.data_despesa) : 'Não informada'}
+                              {despesa.data_pagamento && (
+                                <> | <strong>Pago em:</strong> {formatDateToBrazilian(despesa.data_pagamento)}</>
+                              )}
+                              {despesa.forma_pagamento && (
+                                <> | <strong>Forma:</strong> {despesa.forma_pagamento}</>
+                              )}
+                            </Typography>
+                          )}
+                          
+                          {despesa.observacao && (
+                            <Typography variant="body2" color="textSecondary">
+                              <strong>Observação:</strong> {despesa.observacao}
+                            </Typography>
+                          )}
+                        </Box>
+                      }
+                    />
+                  </ListItem>
+                  {index < despesas.length - 1 && <Divider />}
+                </React.Fragment>
+              ))}
+              
+              {despesas.length === 0 && !carregando && (
+                <ListItem>
+                  <ListItemText
+                    primary="Nenhuma despesa encontrada"
+                    secondary="Ajuste os filtros para visualizar as despesas"
+                  />
+                </ListItem>
               )}
-            </>
+            </List>
           )}
         </CardContent>
       </Card>

@@ -1,53 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Card, CardContent, TextField, Button, List, ListItem, ListItemText, MenuItem, Divider, CircularProgress, FormControl, InputLabel, Select } from '@mui/material';
-import PrintIcon from '@mui/icons-material/Print';
+import { Box, Typography, Card, CardContent, TextField, Button, List, ListItem, ListItemText, MenuItem, Divider, CircularProgress, FormControl, InputLabel, Select, Snackbar, Alert } from '@mui/material';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import { filiaisService } from '../services/filiaisService';
 import type { Filial } from '../services/filiaisService';
 import { custoOSService } from '../services/custoOSService';
 import type { CustoOS } from '../services/custoOSService';
 import { formatDateToBrazilian } from '../utils/dateUtils';
+import { RelatoriosPDFService } from '../services/relatoriosPDFService';
 
-// Estilos CSS para impressão
-const printStyles = `
-  @media print {
-    /* Ocultar elementos que não devem ser impressos */
-    nav, header, footer, .MuiAppBar-root, .MuiDrawer-root, .no-print {
-      display: none !important;
-    }
-    
-    /* Garantir que o conteúdo do relatório ocupe toda a página */
-    body, html {
-      width: 100% !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      background-color: white !important;
-    }
-    
-    /* Ajustar o conteúdo do relatório */
-    .print-only {
-      display: block !important;
-      width: 100% !important;
-      margin: 0 !important;
-      padding: 0 !important;
-    }
-    
-    /* Remover sombras e bordas para economizar tinta */
-    .MuiCard-root, .MuiPaper-root {
-      box-shadow: none !important;
-      border: 1px solid #ddd !important;
-    }
-    
-    /* Ajustar o tamanho da fonte para impressão */
-    body {
-      font-size: 12pt !important;
-    }
-    
-    /* Garantir que os totais e indicadores sejam impressos corretamente */
-    .totais-indicadores {
-      page-break-inside: avoid !important;
-    }
-  }
-`;
 
 // Interface para mapear os dados da API para o formato usado no componente
 interface OS {
@@ -82,6 +42,7 @@ const RelatorioOS: React.FC = () => {
   const [carregandoFiliais, setCarregandoFiliais] = useState(true);
   const [carregandoOS, setCarregandoOS] = useState(true);
   const [filialMap, setFilialMap] = useState<Map<number, string>>(new Map());
+  const [alert, setAlert] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({ open: false, message: '', severity: 'info' });
 
   useEffect(() => {
     const buscarFiliais = async () => {
@@ -207,32 +168,59 @@ const RelatorioOS: React.FC = () => {
     }
   };
 
-  // Função para imprimir o relatório
-  const handleImprimir = () => {
-    // Adicionar estilos de impressão ao documento
-    const styleElement = document.createElement('style');
-    styleElement.setAttribute('id', 'print-styles');
-    styleElement.innerHTML = printStyles;
-    document.head.appendChild(styleElement);
-    
-    // Imprimir a página
-    window.print();
-    
-    // Remover os estilos de impressão após a impressão
-    setTimeout(() => {
-      const printStyleElement = document.getElementById('print-styles');
-      if (printStyleElement) {
-        printStyleElement.remove();
-      }
-    }, 1000);
+  // Função para gerar PDF
+  const handleGerarPDF = () => {
+    try {
+      const relatorioService = new RelatoriosPDFService();
+      
+      const filtrosRelatorio = {
+        filial: filtros.filial || undefined,
+        dataInicial: filtros.dataInicial || undefined,
+        dataFinal: filtros.dataFinal || undefined
+      };
+      
+      const doc = relatorioService.gerarRelatorioOS(osFiltradas, filtrosRelatorio);
+      
+      const nomeArquivo = `relatorio-os-${new Date().toISOString().slice(0, 10)}.pdf`;
+      relatorioService.salvar(nomeArquivo);
+      
+      setAlert({
+        open: true,
+        message: 'Relatório PDF gerado com sucesso!',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      setAlert({
+        open: true,
+        message: 'Erro ao gerar relatório PDF. Tente novamente.',
+        severity: 'error'
+      });
+    }
+  };
+
+  const handleCloseAlert = () => {
+    setAlert({ ...alert, open: false });
   };
 
   return (
     <Box>
+      {/* Snackbar para feedback */}
+      <Snackbar
+        open={alert.open}
+        autoHideDuration={6000}
+        onClose={handleCloseAlert}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: '100%' }}>
+          {alert.message}
+        </Alert>
+      </Snackbar>
+
       <Typography variant="h4" gutterBottom color="primary">
         Relatório de OS
       </Typography>
-      <Card sx={{ mb: 3 }} className="no-print">
+      <Card sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>Filtros</Typography>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 2 }}>
@@ -268,14 +256,14 @@ const RelatorioOS: React.FC = () => {
               <TextField label="Data Final" name="dataFinal" type="date" value={filtros.dataFinal} onChange={handleFiltroChange} InputLabelProps={{ shrink: true }} fullWidth />
             </Box>
             <Box sx={{ flex: '1 1 300px', minWidth: '250px', display: "flex", alignItems: "center" }}>
-              <Button variant="outlined" startIcon={<PrintIcon />} onClick={handleImprimir} sx={{ mt: { xs: 2, md: 0 } }}>
-                Imprimir Relatório
+              <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleGerarPDF} sx={{ mt: { xs: 2, md: 0 } }}>
+                Gerar PDF
               </Button>
             </Box>
           </Box>
         </CardContent>
       </Card>
-      <Card className="print-only">
+      <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>OS Filtradas</Typography>
           {carregandoOS ? (
@@ -298,8 +286,8 @@ const RelatorioOS: React.FC = () => {
             </List>
           )}
           <Divider sx={{ my: 2 }} />
-          <Typography variant="subtitle1" className="totais-indicadores"><b>Totais e Indicadores</b></Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, mt: 1 }} className="totais-indicadores">
+          <Typography variant="subtitle1"><b>Totais e Indicadores</b></Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, mt: 1 }}>
             <Box>Valor total das vendas: <b>R$ {totalVendas.toFixed(2)}</b></Box>
             <Box>Custo total das lentes: <b>R$ {totalLentes.toFixed(2)}</b></Box>
             <Box>Custo total das armações: <b>R$ {totalArmacoes.toFixed(2)}</b></Box>

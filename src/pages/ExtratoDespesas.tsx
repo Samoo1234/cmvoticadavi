@@ -19,7 +19,6 @@ import {
   Chip
 } from '@mui/material';
 
-import PrintIcon from '@mui/icons-material/Print';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import { despesasFixasService } from '../services/despesasFixasService';
 import { despesasDiversasService } from '../services/despesasDiversasService';
@@ -220,11 +219,6 @@ const ExtratoDespesas: React.FC = () => {
     });
   };
 
-  // Função para imprimir
-  const handleImprimir = () => {
-    window.print();
-  };
-
   // Função para gerar PDF
   const handleGerarPDF = () => {
     try {
@@ -384,14 +378,6 @@ const ExtratoDespesas: React.FC = () => {
               color="primary"
             >
               Gerar PDF
-            </Button>
-            
-            <Button
-              variant="outlined"
-              startIcon={<PrintIcon />}
-              onClick={handleImprimir}
-            >
-              Imprimir
             </Button>
           </Stack>
         </CardContent>

@@ -13,6 +13,7 @@ import Despesas from '../pages/Despesas';
 import DespesasFixas from '../pages/DespesasFixas';
 import DespesasDiversas from '../pages/DespesasDiversas';
 import ExtratoDespesas from '../pages/ExtratoDespesas';
+import CategoriasDespesas from '../pages/CategoriasDespesas';
 
 const AppRoutes: React.FC = () => (
   <BrowserRouter>
@@ -31,6 +32,7 @@ const AppRoutes: React.FC = () => (
         <Route path="/despesas-fixas" element={<DespesasFixas />} />
         <Route path="/despesas-diversas" element={<DespesasDiversas />} />
         <Route path="/extrato-despesas" element={<ExtratoDespesas />} />
+        <Route path="/categorias-despesas" element={<CategoriasDespesas />} />
       </Routes>
     </Layout>
   </BrowserRouter>

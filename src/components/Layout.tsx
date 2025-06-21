@@ -11,6 +11,7 @@ import BarChartIcon from '@mui/icons-material/BarChart';
 import StoreIcon from '@mui/icons-material/Store';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import DescriptionIcon from '@mui/icons-material/Description';
+import LabelIcon from '@mui/icons-material/Label';
 import { useNavigate } from 'react-router-dom';
 
 const drawerWidth = 240;
@@ -22,6 +23,7 @@ const menuItems = [
   { text: 'Fornecedores', icon: <BusinessIcon />, path: '/fornecedores' },
   { text: 'Títulos', icon: <ReceiptIcon />, path: '/titulos' },
   { text: 'Extrato de Títulos', icon: <AssignmentIcon />, path: '/extrato-titulos' },
+  { text: 'Categorias de Despesas', icon: <LabelIcon />, path: '/categorias-despesas' },
   { text: 'Despesas Fixas', icon: <PaymentsIcon />, path: '/despesas-fixas' },
   { text: 'Despesas Diversas', icon: <PaymentsIcon />, path: '/despesas-diversas' },
   { text: 'Extrato Despesas', icon: <DescriptionIcon />, path: '/extrato-despesas' },

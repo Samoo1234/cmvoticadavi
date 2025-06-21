@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 export interface CategoriaDespesa {
   id: number;
   nome: string;
-  tipo: 'fixa' | 'variavel' | 'ambos';
+  tipo: 'fixa' | 'diversa';
   created_at?: string;
   updated_at?: string;
 }
@@ -39,21 +39,36 @@ export interface DespesaCompleta extends Despesa {
 
 // Serviço para categorias de despesas
 export const categoriasDespesasService = {
-  async getAll(): Promise<CategoriaDespesa[]> {
-    const { data, error } = await supabase
-      .from('categorias_despesas')
-      .select('*')
-      .order('nome');
 
-    if (error) {
-      console.error('Erro ao buscar categorias de despesas:', error);
+  async getAll(): Promise<CategoriaDespesa[]> {
+    try {
+      const { data, error } = await supabase
+        .from('categorias_despesas')
+        .select('*')
+        .order('nome');
+
+      if (error) {
+        console.error('Erro ao buscar categorias de despesas:', error);
+        return [];
+      }
+
+      // Filtrar apenas categorias com tipos válidos e corrigir dados antigos
+      const categoriasValidas = (data || []).filter(categoria => {
+        if (!['fixa', 'diversa'].includes(categoria.tipo)) {
+          console.warn(`Categoria com tipo inválido encontrada: ${categoria.nome} (${categoria.tipo})`);
+          return false;
+        }
+        return true;
+      });
+
+      return categoriasValidas;
+    } catch (error) {
+      console.error('Erro inesperado ao buscar categorias:', error);
       return [];
     }
-
-    return data || [];
   },
 
-  async getByTipo(tipo: 'fixa' | 'variavel' | 'ambos'): Promise<CategoriaDespesa[]> {
+  async getByTipo(tipo: 'fixa' | 'diversa'): Promise<CategoriaDespesa[]> {
     const { data, error } = await supabase
       .from('categorias_despesas')
       .select('*')
@@ -69,289 +84,258 @@ export const categoriasDespesasService = {
   },
 
   async create(categoria: Omit<CategoriaDespesa, 'id' | 'created_at' | 'updated_at'>): Promise<CategoriaDespesa | null> {
-    const { data, error } = await supabase
-      .from('categorias_despesas')
-      .insert([categoria])
-      .select()
-      .single();
+    try {
+      // Validar o tipo antes de enviar para o banco
+      if (!['fixa', 'diversa'].includes(categoria.tipo)) {
+        console.error('Tipo de categoria inválido:', categoria.tipo);
+        return null;
+      }
 
-    if (error) {
-      console.error('Erro ao criar categoria de despesa:', error);
+      const { data, error } = await supabase
+        .from('categorias_despesas')
+        .insert([categoria])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Erro ao criar categoria de despesa:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Erro inesperado ao criar categoria:', error);
       return null;
     }
-
-    return data;
   },
 
   async update(id: number, categoria: Partial<CategoriaDespesa>): Promise<CategoriaDespesa | null> {
-    const { data, error } = await supabase
-      .from('categorias_despesas')
-      .update(categoria)
-      .eq('id', id)
-      .select()
-      .single();
+    try {
+      // Validar o tipo se estiver sendo atualizado
+      if (categoria.tipo && !['fixa', 'diversa'].includes(categoria.tipo)) {
+        console.error('Tipo de categoria inválido:', categoria.tipo);
+        return null;
+      }
 
-    if (error) {
-      console.error(`Erro ao atualizar categoria de despesa ID ${id}:`, error);
+      const { data, error } = await supabase
+        .from('categorias_despesas')
+        .update(categoria)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error(`Erro ao atualizar categoria de despesa ID ${id}:`, error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Erro inesperado ao atualizar categoria:', error);
       return null;
     }
-
-    return data;
   },
 
   async delete(id: number): Promise<boolean> {
-    const { error } = await supabase
-      .from('categorias_despesas')
-      .delete()
-      .eq('id', id);
+    try {
+      // Verificar se existem despesas vinculadas nas tabelas corretas
+      const [despesasFixasResult, despesasDiversasResult] = await Promise.all([
+        supabase
+          .from('despesas_fixas')
+          .select('id')
+          .eq('categoria_id', id)
+          .limit(1),
+        supabase
+          .from('despesas_diversas')
+          .select('id')
+          .eq('categoria_id', id)
+          .limit(1)
+      ]);
 
-    if (error) {
-      console.error(`Erro ao excluir categoria de despesa ID ${id}:`, error);
+      const temDespesasFixas = despesasFixasResult.data && despesasFixasResult.data.length > 0;
+      const temDespesasDiversas = despesasDiversasResult.data && despesasDiversasResult.data.length > 0;
+
+      if (temDespesasFixas || temDespesasDiversas) {
+        console.error(`Categoria ID ${id} não pode ser excluída pois tem despesas vinculadas`);
+        return false;
+      }
+
+      // Se não há despesas vinculadas, pode excluir
+      const { error } = await supabase
+        .from('categorias_despesas')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error(`Erro ao excluir categoria de despesa ID ${id}:`, error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error(`Erro inesperado ao excluir categoria ID ${id}:`, error);
       return false;
     }
+  },
 
-    return true;
+  // Nova função para verificar despesas vinculadas
+  async verificarDespesasVinculadas(categoriaId: number): Promise<{ fixas: number; diversas: number }> {
+    try {
+      const [fixasResult, diversasResult] = await Promise.all([
+        supabase
+          .from('despesas_fixas')
+          .select('id', { count: 'exact' })
+          .eq('categoria_id', categoriaId),
+        supabase
+          .from('despesas_diversas')
+          .select('id', { count: 'exact' })
+          .eq('categoria_id', categoriaId)
+      ]);
+
+      return {
+        fixas: fixasResult.count || 0,
+        diversas: diversasResult.count || 0
+      };
+    } catch (error) {
+      console.error('Erro ao verificar despesas vinculadas:', error);
+      return { fixas: 0, diversas: 0 };
+    }
+  },
+
+  // Função para remover vinculações e permitir exclusão
+  async removerVinculacoesEExcluir(categoriaId: number): Promise<{ success: boolean; message: string }> {
+    try {
+      // Verificar quantas despesas estão vinculadas
+      const vinculacoes = await this.verificarDespesasVinculadas(categoriaId);
+      
+      if (vinculacoes.fixas === 0 && vinculacoes.diversas === 0) {
+        // Pode excluir normalmente
+        const sucesso = await this.delete(categoriaId);
+        return {
+          success: sucesso,
+          message: sucesso ? 'Categoria excluída com sucesso!' : 'Erro ao excluir categoria'
+        };
+      }
+
+      // Perguntar ao usuário se quer remover as vinculações
+      const mensagem = `Esta categoria tem ${vinculacoes.fixas} despesas fixas e ${vinculacoes.diversas} despesas diversas vinculadas. Deseja remover essas vinculações (as despesas não serão excluídas, apenas desvinculadas da categoria)?`;
+      
+      return {
+        success: false,
+        message: mensagem
+      };
+    } catch (error) {
+      console.error('Erro ao processar exclusão:', error);
+      return {
+        success: false,
+        message: 'Erro ao processar exclusão da categoria'
+      };
+    }
+  },
+
+  async forcarExclusaoComDesvinculacao(categoriaId: number): Promise<{ success: boolean; message: string }> {
+    try {
+      // Remover vinculações (setar categoria_id para null)
+      await Promise.all([
+        supabase
+          .from('despesas_fixas')
+          .update({ categoria_id: null })
+          .eq('categoria_id', categoriaId),
+        supabase
+          .from('despesas_diversas')
+          .update({ categoria_id: null })
+          .eq('categoria_id', categoriaId)
+      ]);
+
+      // Agora excluir a categoria
+      const sucesso = await this.delete(categoriaId);
+      
+      return {
+        success: sucesso,
+        message: sucesso 
+          ? 'Categoria excluída com sucesso! As despesas foram desvinculadas.' 
+          : 'Erro ao excluir categoria mesmo após desvinculação'
+      };
+    } catch (error) {
+      console.error('Erro ao forçar exclusão:', error);
+      return {
+        success: false,
+        message: 'Erro ao forçar exclusão da categoria'
+      };
+    }
   }
 };
 
-// Serviço principal para despesas
+// Serviço principal para despesas - DEPRECIADO: usar despesasFixasService e despesasDiversasService
 export const despesasService = {
+  // DEPRECIADO - usar despesasFixasService.getAll() e despesasDiversasService.getAll()
   async getAll(): Promise<Despesa[]> {
-    const { data, error } = await supabase
-      .from('despesas')
-      .select('*')
-      .order('data_despesa', { ascending: false });
-
-    if (error) {
-      console.error('Erro ao buscar despesas:', error);
-      return [];
-    }
-
-    return data || [];
+    console.warn('despesasService.getAll() está depreciado. Use despesasFixasService e despesasDiversasService');
+    return [];
   },
 
+  // DEPRECIADO - usar despesasFixasService.getAllCompletas() e despesasDiversasService.getAllCompletas()
   async getAllCompletas(): Promise<DespesaCompleta[]> {
-    const { data, error } = await supabase
-      .from('despesas')
-      .select(`
-        *,
-        filiais (nome),
-        categorias_despesas (nome, tipo)
-      `)
-      .order('data_despesa', { ascending: false });
-
-    if (error) {
-      console.error('Erro ao buscar despesas completas:', error);
-      return [];
-    }
-
-    // Mapear os dados para o formato esperado
-    const despesasCompletas = data?.map(item => ({
-      ...item,
-      filial: item.filiais?.nome || 'Não especificado',
-      categoria: item.categorias_despesas?.nome || 'Não categorizado'
-    })) || [];
-
-    return despesasCompletas;
+    console.warn('despesasService.getAllCompletas() está depreciado. Use despesasFixasService e despesasDiversasService');
+    return [];
   },
+
+  // TODOS OS MÉTODOS ABAIXO ESTÃO DEPRECIADOS
+  // USE: despesasFixasService e despesasDiversasService
 
   async getByTipo(tipo: 'fixa' | 'variavel'): Promise<Despesa[]> {
-    const { data, error } = await supabase
-      .from('despesas')
-      .select('*')
-      .eq('tipo_despesa', tipo)
-      .order('data_despesa', { ascending: false });
-
-    if (error) {
-      console.error(`Erro ao buscar despesas do tipo ${tipo}:`, error);
-      return [];
-    }
-
-    return data || [];
+    console.warn('despesasService.getByTipo() está depreciado. Use despesasFixasService ou despesasDiversasService');
+    return [];
   },
 
   async getByTipoCompletas(tipo: 'fixa' | 'variavel'): Promise<DespesaCompleta[]> {
-    const { data, error } = await supabase
-      .from('despesas')
-      .select(`
-        *,
-        filiais (nome),
-        categorias_despesas (nome, tipo)
-      `)
-      .eq('tipo_despesa', tipo)
-      .order('data_despesa', { ascending: false });
-
-    if (error) {
-      console.error(`Erro ao buscar despesas completas do tipo ${tipo}:`, error);
-      return [];
-    }
-
-    // Mapear os dados para o formato esperado
-    const despesasCompletas = data?.map(item => ({
-      ...item,
-      filial: item.filiais?.nome || 'Não especificado',
-      categoria: item.categorias_despesas?.nome || 'Não categorizado'
-    })) || [];
-
-    return despesasCompletas;
+    console.warn('despesasService.getByTipoCompletas() está depreciado. Use despesasFixasService ou despesasDiversasService');
+    return [];
   },
 
   async getByFilial(filialId: number): Promise<Despesa[]> {
-    const { data, error } = await supabase
-      .from('despesas')
-      .select('*')
-      .eq('filial_id', filialId)
-      .order('data_despesa', { ascending: false });
-
-    if (error) {
-      console.error(`Erro ao buscar despesas da filial ID ${filialId}:`, error);
-      return [];
-    }
-
-    return data || [];
+    console.warn('despesasService.getByFilial() está depreciado. Use despesasFixasService e despesasDiversasService');
+    return [];
   },
 
   async getByPeriodo(dataInicial: string, dataFinal: string): Promise<Despesa[]> {
-    const { data, error } = await supabase
-      .from('despesas')
-      .select('*')
-      .gte('data_despesa', dataInicial)
-      .lte('data_despesa', dataFinal)
-      .order('data_despesa', { ascending: false });
-
-    if (error) {
-      console.error(`Erro ao buscar despesas no período de ${dataInicial} a ${dataFinal}:`, error);
-      return [];
-    }
-
-    return data || [];
+    console.warn('despesasService.getByPeriodo() está depreciado. Use despesasDiversasService.getByPeriodo()');
+    return [];
   },
 
   async getByPeriodoCompletas(dataInicial: string, dataFinal: string): Promise<DespesaCompleta[]> {
-    // Buscar todas as despesas (fixas e variáveis no período)
-    const { data, error } = await supabase
-      .from('despesas')
-      .select(`
-        *,
-        filiais (nome),
-        categorias_despesas (nome, tipo)
-      `)
-      .or(`tipo_despesa.eq.fixa,and(tipo_despesa.eq.variavel,data_despesa.gte.${dataInicial},data_despesa.lte.${dataFinal})`)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error(`Erro ao buscar despesas completas no período de ${dataInicial} a ${dataFinal}:`, error);
-      return [];
-    }
-
-    // Mapear os dados para o formato esperado
-    const despesasCompletas = data?.map(item => ({
-      ...item,
-      filial: item.filiais?.nome || 'Não especificado',
-      categoria: item.categorias_despesas?.nome || 'Não categorizado'
-    })) || [];
-
-    return despesasCompletas;
+    console.warn('despesasService.getByPeriodoCompletas() está depreciado. Use despesasDiversasService.getByPeriodoCompletas()');
+    return [];
   },
 
   async getByFilialEPeriodo(filialId: number, dataInicial: string, dataFinal: string): Promise<Despesa[]> {
-    const { data, error } = await supabase
-      .from('despesas')
-      .select('*')
-      .eq('filial_id', filialId)
-      .gte('data_despesa', dataInicial)
-      .lte('data_despesa', dataFinal)
-      .order('data_despesa', { ascending: false });
-
-    if (error) {
-      console.error(`Erro ao buscar despesas da filial ID ${filialId} no período de ${dataInicial} a ${dataFinal}:`, error);
-      return [];
-    }
-
-    return data || [];
+    console.warn('despesasService.getByFilialEPeriodo() está depreciado. Use despesasFixasService e despesasDiversasService');
+    return [];
   },
 
   async create(despesa: Omit<Despesa, 'id' | 'created_at' | 'updated_at'>): Promise<Despesa | null> {
-    const { data, error } = await supabase
-      .from('despesas')
-      .insert([despesa])
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Erro ao criar despesa:', error);
-      return null;
-    }
-
-    return data;
+    console.warn('despesasService.create() está depreciado. Use despesasFixasService.create() ou despesasDiversasService.create()');
+    return null;
   },
 
   async update(id: number, despesa: Partial<Despesa>): Promise<Despesa | null> {
-    const { data, error } = await supabase
-      .from('despesas')
-      .update(despesa)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error(`Erro ao atualizar despesa ID ${id}:`, error);
-      return null;
-    }
-
-    return data;
+    console.warn('despesasService.update() está depreciado. Use despesasFixasService.update() ou despesasDiversasService.update()');
+    return null;
   },
-  
-  // Já existe um método marcarComoPago mais completo abaixo
 
   async marcarComoPago(id: number, dataPagamento: string, formaPagamento?: string): Promise<Despesa | null> {
-    const { data, error } = await supabase
-      .from('despesas')
-      .update({
-        status: 'pago',
-        data_pagamento: dataPagamento,
-        ...(formaPagamento && { forma_pagamento: formaPagamento })
-      })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error(`Erro ao marcar despesa ID ${id} como paga:`, error);
-      return null;
-    }
-
-    return data;
+    console.warn('despesasService.marcarComoPago() está depreciado. Use despesasDiversasService.marcarComoPago()');
+    return null;
   },
 
   async atualizarStatus(id: number, status: 'pendente' | 'pago' | 'ativo' | 'inativo'): Promise<Despesa | null> {
-    const { data, error } = await supabase
-      .from('despesas')
-      .update({ status })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error(`Erro ao atualizar status da despesa ID ${id} para ${status}:`, error);
-      return null;
-    }
-
-    return data;
+    console.warn('despesasService.atualizarStatus() está depreciado. Use despesasFixasService ou despesasDiversasService');
+    return null;
   },
 
   async delete(id: number): Promise<boolean> {
-    const { error } = await supabase
-      .from('despesas')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      console.error(`Erro ao excluir despesa ID ${id}:`, error);
-      return false;
-    }
-
-    return true;
+    console.warn('despesasService.delete() está depreciado. Use despesasFixasService.delete() ou despesasDiversasService.delete()');
+    return false;
   },
 
   // Método para compatibilidade com outras páginas
@@ -362,11 +346,11 @@ export const despesasService = {
   // Métodos específicos para cada tipo de despesa
   async getCategoriasFixas(): Promise<CategoriaDespesa[]> {
     const todasCategorias = await categoriasDespesasService.getAll();
-    return todasCategorias.filter(cat => cat.tipo === 'fixa' || cat.tipo === 'ambos');
+    return todasCategorias.filter(cat => cat.tipo === 'fixa');
   },
 
   async getCategoriasDiversas(): Promise<CategoriaDespesa[]> {
     const todasCategorias = await categoriasDespesasService.getAll();
-    return todasCategorias.filter(cat => cat.tipo === 'variavel' || cat.tipo === 'ambos');
+    return todasCategorias.filter(cat => cat.tipo === 'diversa');
   }
 };

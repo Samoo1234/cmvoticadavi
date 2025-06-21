@@ -168,6 +168,8 @@ const Filiais: React.FC = () => {
   };
 
   const handleEdit = (filial: Filial) => {
+    if (!filial.id) return; // Não edita se não há ID
+    
     setForm({
       nome: filial.nome,
       endereco: filial.endereco,
@@ -341,8 +343,8 @@ const Filiais: React.FC = () => {
                       <EditIcon />
                     </IconButton>
                     <IconButton 
-                      onClick={() => handleDelete(filial.id)} 
-                      disabled={loading}
+                      onClick={() => filial.id && handleDelete(filial.id)} 
+                      disabled={loading || !filial.id}
                       size="small"
                       color="error"
                     >

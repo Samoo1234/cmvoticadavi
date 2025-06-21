@@ -9,7 +9,6 @@ import EmissaoTitulos from '../pages/EmissaoTitulos';
 import CustoOS from '../pages/CustoOS';
 import RelatorioOS from '../pages/RelatorioOS';
 import Filiais from '../pages/Filiais';
-import Despesas from '../pages/Despesas';
 import DespesasFixas from '../pages/DespesasFixas';
 import DespesasDiversas from '../pages/DespesasDiversas';
 import ExtratoDespesas from '../pages/ExtratoDespesas';
@@ -28,7 +27,6 @@ const AppRoutes: React.FC = () => (
         <Route path="/custo-os" element={<CustoOS />} />
         <Route path="/relatorio-os" element={<RelatorioOS />} />
         <Route path="/filiais" element={<Filiais />} />
-        <Route path="/despesas" element={<Despesas />} />
         <Route path="/despesas-fixas" element={<DespesasFixas />} />
         <Route path="/despesas-diversas" element={<DespesasDiversas />} />
         <Route path="/extrato-despesas" element={<ExtratoDespesas />} />

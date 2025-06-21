@@ -12,6 +12,7 @@ import { despesasDiversasService, type DespesaDiversaCompleta } from '../service
 import { filiaisService } from '../services/filiaisService';
 import { despesasService } from '../services/despesasService';
 import { RelatoriosPDFService } from '../services/relatoriosPDFService';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Filial {
   id: number;
@@ -24,6 +25,7 @@ interface CategoriaType {
 }
 
 export default function DespesasDiversas() {
+  const { hasPermission } = useAuth();
   const [despesas, setDespesas] = useState<DespesaDiversaCompleta[]>([]);
   const [despesasFiltradas, setDespesasFiltradas] = useState<DespesaDiversaCompleta[]>([]);
   const [filiais, setFiliais] = useState<Filial[]>([]);
@@ -322,13 +324,15 @@ export default function DespesasDiversas() {
           >
             Gerar PDF
           </Button>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenDialog()}
-          >
-            Nova Despesa
-          </Button>
+          {hasPermission('despesas-diversas', 'criar') && (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => handleOpenDialog()}
+            >
+              Nova Despesa
+            </Button>
+          )}
         </Box>
       </Box>
 
@@ -474,15 +478,17 @@ export default function DespesasDiversas() {
                       <TableCell>{despesa.observacao || '-'}</TableCell>
                       <TableCell align="center">
                         <Box sx={{ display: 'flex', gap: 1 }}>
-                          <Tooltip title="Editar">
-                            <IconButton
-                              onClick={() => handleOpenDialog(despesa)}
-                              size="small"
-                              color="primary"
-                            >
-                              <EditIcon />
-                            </IconButton>
-                          </Tooltip>
+                          {hasPermission('despesas-diversas', 'editar') && (
+                            <Tooltip title="Editar">
+                              <IconButton
+                                onClick={() => handleOpenDialog(despesa)}
+                                size="small"
+                                color="primary"
+                              >
+                                <EditIcon />
+                              </IconButton>
+                            </Tooltip>
+                          )}
                           {despesa.status === 'pendente' ? (
                             <Tooltip title="Marcar como Pago">
                               <IconButton
@@ -504,15 +510,17 @@ export default function DespesasDiversas() {
                               </IconButton>
                             </Tooltip>
                           )}
-                          <Tooltip title="Excluir">
-                            <IconButton
-                              onClick={() => handleDelete(despesa.id)}
-                              size="small"
-                              color="error"
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          </Tooltip>
+                          {hasPermission('despesas-diversas', 'excluir') && (
+                            <Tooltip title="Excluir">
+                              <IconButton
+                                onClick={() => handleDelete(despesa.id)}
+                                size="small"
+                                color="error"
+                              >
+                                <DeleteIcon />
+                              </IconButton>
+                            </Tooltip>
+                          )}
                         </Box>
                       </TableCell>
                     </TableRow>

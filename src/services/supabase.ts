@@ -9,7 +9,7 @@ if (!supabaseUrl || !supabaseKey) {
   console.error('Variáveis de ambiente do Supabase não definidas!');
 }
 
-// Configuração do cliente Supabase com interceptors de erro
+// Configuração do cliente Supabase 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     autoRefreshToken: true,
@@ -20,8 +20,3 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
 
 // Interceptor para logar todas as requisições
 supabase.realtime.setAuth(supabaseKey);
-
-// Interceptor para erros
-supabase.auth.onAuthStateChange((event, session) => {
-  console.log('Auth state changed:', event, session);
-});

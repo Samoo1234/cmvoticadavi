@@ -12,6 +12,7 @@ import { despesasFixasService, type DespesaFixaCompleta } from '../services/desp
 import { filiaisService } from '../services/filiaisService';
 import { despesasService } from '../services/despesasService';
 import { RelatoriosPDFService } from '../services/relatoriosPDFService';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Filial {
   id: number;
@@ -24,6 +25,7 @@ interface CategoriaType {
 }
 
 export default function DespesasFixas() {
+  const { hasPermission } = useAuth();
   const [despesas, setDespesas] = useState<DespesaFixaCompleta[]>([]);
   const [filiais, setFiliais] = useState<Filial[]>([]);
   const [categorias, setCategorias] = useState<CategoriaType[]>([]);
@@ -270,13 +272,15 @@ export default function DespesasFixas() {
           >
             Gerar Vencimentos
           </Button>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenDialog()}
-          >
-            Nova Despesa Fixa
-          </Button>
+          {hasPermission('despesas-fixas', 'criar') && (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => handleOpenDialog()}
+            >
+              Nova Despesa Fixa
+            </Button>
+          )}
         </Box>
       </Box>
 
@@ -350,33 +354,39 @@ export default function DespesasFixas() {
                       <TableCell>{despesa.observacao || '-'}</TableCell>
                       <TableCell align="center">
                         <Box sx={{ display: 'flex', gap: 1 }}>
-                          <Tooltip title="Editar">
-                            <IconButton
-                              onClick={() => handleOpenDialog(despesa)}
-                              size="small"
-                              color="primary"
-                            >
-                              <EditIcon />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title={despesa.status === 'ativo' ? 'Desativar' : 'Ativar'}>
-                            <IconButton
-                              onClick={() => handleToggleStatus(despesa.id, despesa.status)}
-                              size="small"
-                              color={despesa.status === 'ativo' ? 'warning' : 'success'}
-                            >
-                              {despesa.status === 'ativo' ? <BlockIcon /> : <CheckCircleIcon />}
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Excluir">
-                            <IconButton
-                              onClick={() => handleDelete(despesa.id)}
-                              size="small"
-                              color="error"
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          </Tooltip>
+                          {hasPermission('despesas-fixas', 'editar') && (
+                            <Tooltip title="Editar">
+                              <IconButton
+                                onClick={() => handleOpenDialog(despesa)}
+                                size="small"
+                                color="primary"
+                              >
+                                <EditIcon />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          {hasPermission('despesas-fixas', 'editar') && (
+                            <Tooltip title={despesa.status === 'ativo' ? 'Desativar' : 'Ativar'}>
+                              <IconButton
+                                onClick={() => handleToggleStatus(despesa.id, despesa.status)}
+                                size="small"
+                                color={despesa.status === 'ativo' ? 'warning' : 'success'}
+                              >
+                                {despesa.status === 'ativo' ? <BlockIcon /> : <CheckCircleIcon />}
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          {hasPermission('despesas-fixas', 'excluir') && (
+                            <Tooltip title="Excluir">
+                              <IconButton
+                                onClick={() => handleDelete(despesa.id)}
+                                size="small"
+                                color="error"
+                              >
+                                <DeleteIcon />
+                              </IconButton>
+                            </Tooltip>
+                          )}
                         </Box>
                       </TableCell>
                     </TableRow>

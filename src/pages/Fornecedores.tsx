@@ -4,6 +4,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { fornecedoresService, tiposFornecedoresService } from '../services';
 import type { Fornecedor } from '../services/fornecedoresService';
+import { useAuth } from '../contexts/AuthContext';
 
 const Fornecedores: React.FC = () => {
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
@@ -17,6 +18,13 @@ const Fornecedores: React.FC = () => {
     message: '',
     severity: 'info'
   });
+
+  const { hasPermission } = useAuth();
+  
+  // Verificar permissões do usuário
+  const canCreate = hasPermission('fornecedores', 'criar');
+  const canEdit = hasPermission('fornecedores', 'editar');
+  const canDelete = hasPermission('fornecedores', 'excluir');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -55,6 +63,25 @@ const Fornecedores: React.FC = () => {
   };
 
   const handleAddOrEdit = async () => {
+    // Verificar permissões antes de executar a ação
+    if (editId && !canEdit) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para editar fornecedores.',
+        severity: 'error'
+      });
+      return;
+    }
+    
+    if (!editId && !canCreate) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para criar fornecedores.',
+        severity: 'error'
+      });
+      return;
+    }
+
     // Validar campos obrigatórios
     if (!form.nome || !form.cnpj || !form.tipo) {
       setAlert({
@@ -123,6 +150,16 @@ const Fornecedores: React.FC = () => {
   };
 
   const handleEdit = (id: number) => {
+    // Verificar permissão antes de executar a ação
+    if (!canEdit) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para editar fornecedores.',
+        severity: 'error'
+      });
+      return;
+    }
+
     const fornecedor = fornecedores.find(f => f.id === id);
     if (fornecedor) {
       setForm(fornecedor);
@@ -131,6 +168,16 @@ const Fornecedores: React.FC = () => {
   };
 
   const handleDelete = async (id: number) => {
+    // Verificar permissão antes de executar a ação
+    if (!canDelete) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para excluir fornecedores.',
+        severity: 'error'
+      });
+      return;
+    }
+
     try {
       setLoading(true);
       const success = await fornecedoresService.delete(id);
@@ -162,115 +209,145 @@ const Fornecedores: React.FC = () => {
   return (
     <Box>
       <Typography variant="h4" gutterBottom color="primary">
-        Cadastro de Fornecedores
+        {(canCreate || canEdit) ? 'Cadastro de Fornecedores' : 'Consulta de Fornecedores'}
       </Typography>
+      
+      {/* Mensagem informativa para usuários apenas com permissão de visualização */}
+      {!canCreate && !canEdit && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Você tem apenas permissão de visualização para fornecedores. Não é possível criar, editar ou excluir registros.
+        </Alert>
+      )}
       
       {loading ? (
         <Box display="flex" justifyContent="center" my={4}>
           <CircularProgress />
         </Box>
       ) : (
-        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
-          <Box sx={{ flex: 1 }}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  {editId ? 'Editar Fornecedor' : 'Novo Fornecedor'}
-                </Typography>
-                <Box display="flex" flexDirection="column" gap={2}>
-                  <TextField
-                    label="Nome"
-                    name="nome"
-                    value={form.nome || ''}
-                    onChange={handleChange}
-                    fullWidth
-                    required
-                  />
-                  <TextField
-                    label="CNPJ"
-                    name="cnpj"
-                    value={form.cnpj || ''}
-                    onChange={handleChange}
-                    fullWidth
-                    required
-                  />
-
-                  <TextField
-                    select
-                    label="Tipo"
-                    name="tipo"
-                    value={form.tipo || ''}
-                    onChange={handleChange}
-                    fullWidth
-                    required
-                  >
-                    {tiposFornecedores.length > 0 ? (
-                      tiposFornecedores.map(tipo => (
-                        <MenuItem key={tipo} value={tipo}>{tipo}</MenuItem>
-                      ))
-                    ) : (
-                      <MenuItem value="" disabled>Nenhum tipo cadastrado</MenuItem>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: (canCreate || canEdit) ? '1fr 1fr' : '1fr' }, gap: 3 }}>
+          {/* Só mostra o formulário se tem permissão para criar ou editar */}
+          {(canCreate || canEdit) && (
+            <Box>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    {editId ? 'Editar Fornecedor' : 'Novo Fornecedor'}
+                  </Typography>
+                  <Box display="flex" flexDirection="column" gap={2}>
+                    <TextField
+                      label="Nome"
+                      name="nome"
+                      value={form.nome || ''}
+                      onChange={handleChange}
+                      fullWidth
+                      required
+                    />
+                    <TextField
+                      label="CNPJ"
+                      name="cnpj"
+                      value={form.cnpj || ''}
+                      onChange={handleChange}
+                      fullWidth
+                      required
+                    />
+                    <TextField
+                      select
+                      label="Tipo"
+                      name="tipo"
+                      value={form.tipo || ''}
+                      onChange={handleChange}
+                      fullWidth
+                      required
+                    >
+                      {tiposFornecedores.map((tipo) => (
+                        <MenuItem key={tipo} value={tipo}>
+                          {tipo}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                    <TextField
+                      label="Endereço"
+                      name="endereco"
+                      value={form.endereco || ''}
+                      onChange={handleChange}
+                      fullWidth
+                    />
+                    <TextField
+                      label="Filiais Atendidas"
+                      name="filiais"
+                      value={form.filiais || ''}
+                      onChange={handleChange}
+                      fullWidth
+                      placeholder="Ex: Matriz, Filial 1, Filial 2"
+                    />
+                    
+                    {/* Só mostra o botão se tem permissão */}
+                    {((editId && canEdit) || (!editId && canCreate)) && (
+                      <Button variant="contained" color="primary" onClick={handleAddOrEdit}>
+                        {editId ? 'Salvar' : 'Adicionar'}
+                      </Button>
                     )}
-                  </TextField>
-
-                  <Button 
-                    variant="contained" 
-                    color="primary" 
-                    onClick={handleAddOrEdit}
-                  >
-                    {editId ? 'Salvar' : 'Adicionar'}
-                  </Button>
-                </Box>
-              </CardContent>
-            </Card>
-          </Box>
-          <Box sx={{ flex: 1 }}>
+                    
+                    {/* Mensagem explicativa se não tem permissão */}
+                    {!canCreate && !editId && (
+                      <Alert severity="info">
+                        Você não tem permissão para criar fornecedores. Apenas visualização permitida.
+                      </Alert>
+                    )}
+                    
+                    {!canEdit && editId && (
+                      <Alert severity="info">
+                        Você não tem permissão para editar fornecedores. Apenas visualização permitida.
+                      </Alert>
+                    )}
+                  </Box>
+                </CardContent>
+              </Card>
+            </Box>
+          )}
+          
+          <Box>
             <Card>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
                   Fornecedores Cadastrados
                 </Typography>
-                {fornecedores.length === 0 ? (
-                  <Typography variant="body2" color="textSecondary" align="center" sx={{ my: 4 }}>
-                    Nenhum fornecedor cadastrado
-                  </Typography>
-                ) : (
-                  <List>
-                    {fornecedores.map(fornecedor => (
-                      <ListItem key={fornecedor.id} divider>
-                        <ListItemText
-                          primary={fornecedor.nome}
-                          secondary={`CNPJ: ${fornecedor.cnpj} | Tipo: ${fornecedor.tipo}`}
-                        />
-                        <ListItemSecondaryAction>
+                <List>
+                  {fornecedores.map(fornecedor => (
+                    <ListItem key={fornecedor.id} divider>
+                      <ListItemText
+                        primary={`${fornecedor.nome} (${fornecedor.tipo})`}
+                        secondary={`CNPJ: ${fornecedor.cnpj} | Endereço: ${fornecedor.endereco} | Filiais: ${fornecedor.filiais}`}
+                      />
+                      <ListItemSecondaryAction>
+                        {/* Só mostra botões se tem permissão */}
+                        {canEdit && (
                           <IconButton edge="end" aria-label="edit" onClick={() => handleEdit(fornecedor.id)}>
                             <EditIcon />
                           </IconButton>
+                        )}
+                        {canDelete && (
                           <IconButton edge="end" aria-label="delete" onClick={() => handleDelete(fornecedor.id)}>
                             <DeleteIcon />
                           </IconButton>
-                        </ListItemSecondaryAction>
-                      </ListItem>
-                    ))}
-                  </List>
-                )}
+                        )}
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  ))}
+                </List>
               </CardContent>
             </Card>
           </Box>
         </Box>
       )}
       
-      <Snackbar 
-        open={alert.open} 
-        autoHideDuration={6000} 
-        onClose={() => setAlert({...alert, open: false})}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      <Snackbar
+        open={alert.open}
+        autoHideDuration={6000}
+        onClose={() => setAlert({ ...alert, open: false })}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
-        <Alert 
-          onClose={() => setAlert({...alert, open: false})} 
-          severity={alert.severity}
-          sx={{ width: '100%' }}
-        >
+        <Alert onClose={() => setAlert({ ...alert, open: false })} severity={alert.severity}>
           {alert.message}
         </Alert>
       </Snackbar>

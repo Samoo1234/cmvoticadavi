@@ -26,6 +26,12 @@ interface CategoriaType {
 
 export default function DespesasDiversas() {
   const { hasPermission } = useAuth();
+  
+  // Verificar permissões do usuário
+  const canCreate = hasPermission('despesas-diversas', 'criar');
+  const canEdit = hasPermission('despesas-diversas', 'editar');
+  const canDelete = hasPermission('despesas-diversas', 'excluir');
+
   const [despesas, setDespesas] = useState<DespesaDiversaCompleta[]>([]);
   const [despesasFiltradas, setDespesasFiltradas] = useState<DespesaDiversaCompleta[]>([]);
   const [filiais, setFiliais] = useState<Filial[]>([]);
@@ -135,6 +141,17 @@ export default function DespesasDiversas() {
   };
 
   const handleOpenDialog = (despesa?: DespesaDiversaCompleta) => {
+    // Verificar permissão antes de abrir o diálogo
+    if (despesa && !canEdit) {
+      showAlert('Você não tem permissão para editar despesas diversas.', 'error');
+      return;
+    }
+    
+    if (!despesa && !canCreate) {
+      showAlert('Você não tem permissão para criar despesas diversas.', 'error');
+      return;
+    }
+
     if (despesa) {
       setEditingId(despesa.id);
       setFormData({
@@ -252,6 +269,12 @@ export default function DespesasDiversas() {
   };
 
   const handleDelete = async (id: number) => {
+    // Verificar permissão antes de executar a ação
+    if (!canDelete) {
+      showAlert('Você não tem permissão para excluir despesas diversas.', 'error');
+      return;
+    }
+
     if (confirm('Tem certeza que deseja excluir esta despesa?')) {
       try {
         await despesasDiversasService.delete(id);
@@ -312,21 +335,24 @@ export default function DespesasDiversas() {
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">
-          Despesas Diversas
+        <Typography variant="h4" component="h1" color="primary">
+          {(canCreate || canEdit) ? 'Cadastro de Despesas Diversas' : 'Consulta de Despesas Diversas'}
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        
+        <Box sx={{ display: 'flex', gap: 2 }}>
           <Button
             variant="outlined"
             startIcon={<PictureAsPdfIcon />}
             onClick={handleGerarPDF}
-            color="primary"
+            disabled={despesasFiltradas.length === 0}
           >
             Gerar PDF
           </Button>
-          {hasPermission('despesas-diversas', 'criar') && (
+          
+          {canCreate && (
             <Button
               variant="contained"
+              color="primary"
               startIcon={<AddIcon />}
               onClick={() => handleOpenDialog()}
             >
@@ -478,7 +504,7 @@ export default function DespesasDiversas() {
                       <TableCell>{despesa.observacao || '-'}</TableCell>
                       <TableCell align="center">
                         <Box sx={{ display: 'flex', gap: 1 }}>
-                          {hasPermission('despesas-diversas', 'editar') && (
+                          {canEdit && (
                             <Tooltip title="Editar">
                               <IconButton
                                 onClick={() => handleOpenDialog(despesa)}
@@ -510,7 +536,7 @@ export default function DespesasDiversas() {
                               </IconButton>
                             </Tooltip>
                           )}
-                          {hasPermission('despesas-diversas', 'excluir') && (
+                          {canDelete && (
                             <Tooltip title="Excluir">
                               <IconButton
                                 onClick={() => handleDelete(despesa.id)}

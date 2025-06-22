@@ -21,13 +21,17 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  DialogContentText
+  DialogContentText,
+  FormControl,
+  InputLabel,
+  Select
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import { categoriasDespesasService } from '../services/despesasService';
 import type { CategoriaDespesa } from '../services/despesasService';
+import { useAuth } from '../contexts/AuthContext';
 
 const CategoriasDespesas: React.FC = () => {
   const [categorias, setCategorias] = useState<CategoriaDespesa[]>([]);
@@ -45,6 +49,13 @@ const CategoriasDespesas: React.FC = () => {
     message: '',
     severity: 'info'
   });
+
+  const { hasPermission } = useAuth();
+  
+  // Verificar permissões do usuário
+  const canCreate = hasPermission('categorias-despesas', 'criar');
+  const canEdit = hasPermission('categorias-despesas', 'editar');
+  const canDelete = hasPermission('categorias-despesas', 'excluir');
 
   useEffect(() => {
     const fetchCategorias = async () => {
@@ -72,6 +83,25 @@ const CategoriasDespesas: React.FC = () => {
   };
 
   const handleAddOrEdit = async () => {
+    // Verificar permissões antes de executar a ação
+    if (editId && !canEdit) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para editar categorias de despesas.',
+        severity: 'error'
+      });
+      return;
+    }
+    
+    if (!editId && !canCreate) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para criar categorias de despesas.',
+        severity: 'error'
+      });
+      return;
+    }
+
     // Validar campos obrigatórios
     if (!form.nome || !form.tipo) {
       setAlert({
@@ -85,10 +115,10 @@ const CategoriasDespesas: React.FC = () => {
     try {
       setLoading(true);
       
-             const dadosCompletos = {
-         nome: form.nome.trim(),
-         tipo: form.tipo as 'fixa' | 'diversa'
-       };
+      const dadosCompletos = {
+        nome: form.nome.trim(),
+        tipo: form.tipo as 'fixa' | 'diversa'
+      };
       
       if (editId) {
         // Atualizar categoria existente
@@ -136,6 +166,16 @@ const CategoriasDespesas: React.FC = () => {
   };
 
   const handleEdit = (id: number) => {
+    // Verificar permissão antes de executar a ação
+    if (!canEdit) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para editar categorias de despesas.',
+        severity: 'error'
+      });
+      return;
+    }
+
     const categoria = categorias.find(c => c.id === id);
     if (categoria) {
       setForm(categoria);
@@ -151,6 +191,16 @@ const CategoriasDespesas: React.FC = () => {
   const handleDeleteConfirm = async () => {
     if (!categoriaToDelete) return;
     
+    // Verificar permissão antes de executar a ação
+    if (!canDelete) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para excluir categorias de despesas.',
+        severity: 'error'
+      });
+      return;
+    }
+
     try {
       setLoading(true);
       
@@ -218,8 +268,6 @@ const CategoriasDespesas: React.FC = () => {
     setEditId(null);
   };
 
-
-
   const getTipoColor = (tipo: string) => {
     switch (tipo) {
       case 'fixa':
@@ -248,6 +296,13 @@ const CategoriasDespesas: React.FC = () => {
         Gerenciar Categorias de Despesas
       </Typography>
       
+      {/* Mensagem informativa para usuários apenas com permissão de visualização */}
+      {!canCreate && !canEdit && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Você tem apenas permissão de visualização para categorias de despesas. Não é possível criar, editar ou excluir registros.
+        </Alert>
+      )}
+      
       {loading ? (
         <Box display="flex" justifyContent="center" my={4}>
           <CircularProgress />
@@ -274,29 +329,30 @@ const CategoriasDespesas: React.FC = () => {
                     placeholder="Ex: Alimentação, Transporte, Energia Elétrica..."
                   />
                   
-                  <TextField
-                    select
-                    label="Tipo"
-                    name="tipo"
-                    value={form.tipo || ''}
-                    onChange={handleChange}
-                    fullWidth
-                    required
-                    helperText="Selecione para que tipo de despesa esta categoria pode ser usada"
-                  >
-                    <MenuItem value="fixa">Fixa</MenuItem>
-                    <MenuItem value="diversa">Diversa</MenuItem>
-                  </TextField>
+                  <FormControl fullWidth required>
+                    <InputLabel>Tipo</InputLabel>
+                    <Select
+                      name="tipo"
+                      value={form.tipo || ''}
+                      label="Tipo"
+                      onChange={(e) => setForm(prev => ({ ...prev, tipo: e.target.value as 'fixa' | 'diversa' }))}
+                    >
+                      <MenuItem value="fixa">Fixa</MenuItem>
+                      <MenuItem value="diversa">Diversa</MenuItem>
+                    </Select>
+                  </FormControl>
                   
                   <Stack direction="row" spacing={2}>
-                    <Button
-                      variant="contained"
-                      onClick={handleAddOrEdit}
-                      fullWidth
-                      disabled={loading}
-                    >
-                      {editId ? 'Atualizar' : 'Adicionar'}
-                    </Button>
+                    {((editId && canEdit) || (!editId && canCreate)) && (
+                      <Button
+                        variant="contained"
+                        onClick={handleAddOrEdit}
+                        fullWidth
+                        disabled={loading}
+                      >
+                        {editId ? 'Atualizar' : 'Adicionar'}
+                      </Button>
+                    )}
                     
                     {editId && (
                       <Button
@@ -359,23 +415,27 @@ const CategoriasDespesas: React.FC = () => {
                           }
                         />
                         <ListItemSecondaryAction>
-                          <IconButton
-                            edge="end"
-                            aria-label="editar"
-                            onClick={() => handleEdit(categoria.id)}
-                            color="primary"
-                            sx={{ mr: 1 }}
-                          >
-                            <EditIcon />
-                          </IconButton>
-                          <IconButton
-                            edge="end"
-                            aria-label="excluir"
-                            onClick={() => handleDeleteClick(categoria.id)}
-                            color="error"
-                          >
-                            <DeleteIcon />
-                          </IconButton>
+                          {canEdit && (
+                            <IconButton
+                              edge="end"
+                              aria-label="editar"
+                              onClick={() => handleEdit(categoria.id)}
+                              color="primary"
+                              sx={{ mr: 1 }}
+                            >
+                              <EditIcon />
+                            </IconButton>
+                          )}
+                          {canDelete && (
+                            <IconButton
+                              edge="end"
+                              aria-label="excluir"
+                              onClick={() => handleDeleteClick(categoria.id)}
+                              color="error"
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          )}
                         </ListItemSecondaryAction>
                       </ListItem>
                     ))}

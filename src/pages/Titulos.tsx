@@ -22,6 +22,7 @@ import { titulosService, type Titulo } from '../services/titulosService';
 import { filiaisService } from '../services/filiaisService';
 import { fornecedoresService } from '../services/fornecedoresService';
 import { tiposFornecedoresService } from '../services/tiposFornecedoresService';
+import { useAuth } from '../contexts/AuthContext';
 
 // Interface local para o formulário
 interface FormTitulo {
@@ -73,6 +74,13 @@ const Titulos: React.FC = () => {
   const [multiplosTitulos, setMultiplosTitulos] = useState(false);
   const [quantidadeTitulos, setQuantidadeTitulos] = useState(1);
   const [itensTitulos, setItensTitulos] = useState<TituloItem[]>([{vencimento: '', valor: ''}]);
+
+  const { hasPermission } = useAuth();
+  
+  // Verificar permissões do usuário
+  const canCreate = hasPermission('titulos', 'criar');
+  const canEdit = hasPermission('titulos', 'editar');
+  const canDelete = hasPermission('titulos', 'excluir');
 
   // Carregar dados iniciais
   useEffect(() => {
@@ -171,6 +179,25 @@ const Titulos: React.FC = () => {
   };
 
   const handleAddOrEdit = async () => {
+    // Verificar permissões antes de executar a ação
+    if (editId && !canEdit) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para editar títulos.',
+        severity: 'error'
+      });
+      return;
+    }
+    
+    if (!editId && !canCreate) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para criar títulos.',
+        severity: 'error'
+      });
+      return;
+    }
+
     // Validações específicas para múltiplos títulos
     if (multiplosTitulos) {
       const camposVazios = itensTitulos.some(item => !item.vencimento || !item.valor);
@@ -375,6 +402,16 @@ const Titulos: React.FC = () => {
   };
 
   const handleEdit = (id: number) => {
+    // Verificar permissão antes de executar a ação
+    if (!canEdit) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para editar títulos.',
+        severity: 'error'
+      });
+      return;
+    }
+
     const titulo = titulos.find(t => t.id === id);
     if (titulo) {
       // Criar um objeto apenas com os campos do formulário
@@ -395,6 +432,16 @@ const Titulos: React.FC = () => {
   };
 
   const handleDelete = async (id: number) => {
+    // Verificar permissão antes de executar a ação
+    if (!canDelete) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para excluir títulos.',
+        severity: 'error'
+      });
+      return;
+    }
+
     if (!window.confirm('Tem certeza que deseja excluir este título?')) {
       return;
     }
@@ -462,11 +509,20 @@ const Titulos: React.FC = () => {
         </Alert>
       </Snackbar>
       <Typography variant="h4" gutterBottom color="primary">
-        Cadastro de Títulos
+        {(canCreate || canEdit) ? 'Cadastro de Títulos' : 'Consulta de Títulos'}
       </Typography>
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
-        <Box>
-          <Card>
+      
+      {/* Mensagem informativa para usuários apenas com permissão de visualização */}
+      {!canCreate && !canEdit && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Você tem apenas permissão de visualização para títulos. Não é possível criar, editar ou excluir registros.
+        </Alert>
+      )}
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: (canCreate || canEdit) ? '1fr 1fr' : '1fr' }, gap: 3 }}>
+        {/* Só mostra o formulário se tem permissão para criar ou editar */}
+        {(canCreate || canEdit) && (
+          <Box>
+            <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 {editId ? 'Editar Título' : 'Novo Título'}
@@ -626,13 +682,30 @@ const Titulos: React.FC = () => {
                   multiline
                   rows={2}
                 />
-                <Button variant="contained" color="primary" onClick={handleAddOrEdit}>
-                  {editId ? 'Salvar' : 'Adicionar'}
-                </Button>
+                {/* Só mostra o botão se tem permissão */}
+                {((editId && canEdit) || (!editId && canCreate)) && (
+                  <Button variant="contained" color="primary" onClick={handleAddOrEdit}>
+                    {editId ? 'Salvar' : 'Adicionar'}
+                  </Button>
+                )}
+                
+                {/* Mensagem explicativa se não tem permissão */}
+                {!canCreate && !editId && (
+                  <Alert severity="info">
+                    Você não tem permissão para criar títulos. Apenas visualização permitida.
+                  </Alert>
+                )}
+                
+                {!canEdit && editId && (
+                  <Alert severity="info">
+                    Você não tem permissão para editar títulos. Apenas visualização permitida.
+                  </Alert>
+                )}
               </Box>
             </CardContent>
           </Card>
         </Box>
+        )}
         <Box>
           <Card>
             <CardContent>
@@ -647,12 +720,17 @@ const Titulos: React.FC = () => {
                       secondary={`Vencimento: ${titulo.vencimento} | Valor: ${titulo.valor} | Obs: ${titulo.observacoes}`}
                     />
                     <ListItemSecondaryAction>
-                      <IconButton edge="end" aria-label="edit" onClick={() => handleEdit(titulo.id)}>
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton edge="end" aria-label="delete" onClick={() => handleDelete(titulo.id)}>
-                        <DeleteIcon />
-                      </IconButton>
+                      {/* Só mostra botões se tem permissão */}
+                      {canEdit && (
+                        <IconButton edge="end" aria-label="edit" onClick={() => handleEdit(titulo.id)}>
+                          <EditIcon />
+                        </IconButton>
+                      )}
+                      {canDelete && (
+                        <IconButton edge="end" aria-label="delete" onClick={() => handleDelete(titulo.id)}>
+                          <DeleteIcon />
+                        </IconButton>
+                      )}
                     </ListItemSecondaryAction>
                   </ListItem>
                 ))}

@@ -20,6 +20,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { filiaisService } from '../services';
 import type { Filial } from '../services/filiaisService';
+import { useAuth } from '../contexts/AuthContext';
 
 // Interface para o estado do alerta
 interface AlertState {
@@ -47,6 +48,13 @@ const Filiais: React.FC = () => {
     message: '', 
     severity: 'info' 
   });
+
+  const { hasPermission } = useAuth();
+  
+  // Verificar permissões do usuário
+  const canCreate = hasPermission('filiais', 'criar');
+  const canEdit = hasPermission('filiais', 'editar');
+  const canDelete = hasPermission('filiais', 'excluir');
 
   useEffect(() => {
     const fetchFiliais = async () => {
@@ -87,6 +95,25 @@ const Filiais: React.FC = () => {
   };
 
   const handleAddOrEdit = async () => {
+    // Verificar permissões antes de executar a ação
+    if (editId && !canEdit) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para editar filiais.',
+        severity: 'error'
+      });
+      return;
+    }
+    
+    if (!editId && !canCreate) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para criar filiais.',
+        severity: 'error'
+      });
+      return;
+    }
+
     // Validação dos campos obrigatórios
     if (!form.nome || !form.endereco) {
       setAlert({
@@ -168,6 +195,16 @@ const Filiais: React.FC = () => {
   };
 
   const handleEdit = (filial: Filial) => {
+    // Verificar permissão antes de executar a ação
+    if (!canEdit) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para editar filiais.',
+        severity: 'error'
+      });
+      return;
+    }
+
     if (!filial.id) return; // Não edita se não há ID
     
     setForm({
@@ -180,6 +217,16 @@ const Filiais: React.FC = () => {
   };
 
   const handleDelete = async (id: number) => {
+    // Verificar permissão antes de executar a ação
+    if (!canDelete) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para excluir filiais.',
+        severity: 'error'
+      });
+      return;
+    }
+
     if (window.confirm('Tem certeza que deseja excluir esta filial?')) {
       try {
         setLoading(true);
@@ -198,12 +245,8 @@ const Filiais: React.FC = () => {
         console.error('Erro ao excluir filial:', error);
         let errorMessage = 'Erro ao excluir filial. Por favor, tente novamente.';
         
-        if (error.message) {
-          if (error.message.includes('permission denied')) {
-            errorMessage = 'Você não tem permissão para excluir esta filial.';
-          } else if (error.message.includes('foreign key')) {
-            errorMessage = 'Não é possível excluir esta filial pois ela possui registros vinculados.';
-          }
+        if (error.message && error.message.includes('foreign key constraint')) {
+          errorMessage = 'Não é possível excluir esta filial pois ela possui vínculos com outros registros.';
         }
         
         setAlert({
@@ -223,7 +266,7 @@ const Filiais: React.FC = () => {
   };
 
   const handleCloseAlert = () => {
-    setAlert(prev => ({ ...prev, open: false }));
+    setAlert({ ...alert, open: false });
   };
 
   if (loading && filiais.length === 0) {
@@ -236,9 +279,16 @@ const Filiais: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Cadastro de Filiais
+      <Typography variant="h4" gutterBottom color="primary">
+        {(canCreate || canEdit) ? 'Cadastro de Filiais' : 'Consulta de Filiais'}
       </Typography>
+      
+      {/* Mensagem informativa para usuários apenas com permissão de visualização */}
+      {!canCreate && !canEdit && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Você tem apenas permissão de visualização para filiais. Não é possível criar, editar ou excluir registros.
+        </Alert>
+      )}
       
       <Card sx={{ mb: 3 }}>
         <CardContent>

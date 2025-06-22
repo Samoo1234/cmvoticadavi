@@ -9,6 +9,7 @@ import {
   IconButton, 
   List, 
   ListItem, 
+  ListItemText,
   ListItemSecondaryAction,
   CircularProgress,
   Snackbar,
@@ -17,200 +18,256 @@ import {
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { tiposFornecedoresService, type TipoFornecedor } from '../services/tiposFornecedoresService';
+import { useAuth } from '../contexts/AuthContext';
 
 const TiposFornecedores: React.FC = () => {
   const [tipos, setTipos] = useState<TipoFornecedor[]>([]);
-  const [nome, setNome] = useState('');
-  const [descricao, setDescricao] = useState('');
+  const [form, setForm] = useState<{ nome: string }>({ nome: '' });
   const [editId, setEditId] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [alert, setAlert] = useState<{open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning'}>({ 
-    open: false, 
-    message: '', 
-    severity: 'info' 
+  const [loading, setLoading] = useState(true);
+  const [alert, setAlert] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({
+    open: false,
+    message: '',
+    severity: 'info'
   });
 
-  // Carrega os tipos de fornecedores do Supabase
+  const { hasPermission } = useAuth();
+  
+  // Verificar permissões do usuário
+  const canCreate = hasPermission('tipos-fornecedores', 'criar');
+  const canEdit = hasPermission('tipos-fornecedores', 'editar');
+  const canDelete = hasPermission('tipos-fornecedores', 'excluir');
+
   useEffect(() => {
-    const loadTipos = async () => {
+    const fetchTipos = async () => {
       try {
-        setIsLoading(true);
+        setLoading(true);
         const data = await tiposFornecedoresService.getAll();
         setTipos(data);
       } catch (error) {
-        console.error('Erro ao carregar tipos de fornecedores:', error);
-        showAlert('Erro ao carregar tipos de fornecedores', 'error');
+        console.error('Erro ao carregar tipos:', error);
+        setAlert({
+          open: true,
+          message: 'Erro ao carregar tipos de fornecedores. Por favor, tente novamente.',
+          severity: 'error'
+        });
       } finally {
-        setIsLoading(false);
+        setLoading(false);
       }
     };
 
-    loadTipos();
+    fetchTipos();
   }, []);
 
-  const showAlert = (message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
-    setAlert({ open: true, message, severity });
-  };
-
-  const handleCloseAlert = (_event?: React.SyntheticEvent | Event, reason?: string) => {
-    if (reason === 'clickaway') {
-      return;
-    }
-    setAlert({ ...alert, open: false });
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm({ nome: e.target.value });
   };
 
   const handleAddOrEdit = async () => {
-    if (nome.trim() === '') {
-      showAlert('Por favor, preencha o nome do tipo', 'warning');
+    // Verificar permissões antes de executar a ação
+    if (editId && !canEdit) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para editar tipos de fornecedores.',
+        severity: 'error'
+      });
+      return;
+    }
+    
+    if (!editId && !canCreate) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para criar tipos de fornecedores.',
+        severity: 'error'
+      });
+      return;
+    }
+
+    if (!form.nome.trim()) {
+      setAlert({
+        open: true,
+        message: 'Por favor, preencha o nome do tipo.',
+        severity: 'warning'
+      });
       return;
     }
 
     try {
-      setIsLoading(true);
+      setLoading(true);
       
       if (editId) {
-        // Atualizar tipo existente
-        const updated = await tiposFornecedoresService.update(editId, { nome, descricao });
+        const updated = await tiposFornecedoresService.update(editId, { nome: form.nome.trim(), descricao: '' });
         if (updated) {
           setTipos(tipos.map(t => t.id === editId ? updated : t));
-          showAlert('Tipo de fornecedor atualizado com sucesso!', 'success');
+          setAlert({
+            open: true,
+            message: 'Tipo de fornecedor atualizado com sucesso!',
+            severity: 'success'
+          });
         }
         setEditId(null);
       } else {
-        // Criar novo tipo
-        const created = await tiposFornecedoresService.create({ nome, descricao });
+        const created = await tiposFornecedoresService.create({ nome: form.nome.trim(), descricao: '' });
         if (created) {
           setTipos([...tipos, created]);
-          showAlert('Tipo de fornecedor adicionado com sucesso!', 'success');
+          setAlert({
+            open: true,
+            message: 'Tipo de fornecedor adicionado com sucesso!',
+            severity: 'success'
+          });
         }
       }
       
-      // Limpar formulário
-      setNome('');
-      setDescricao('');
+      setForm({ nome: '' });
     } catch (error) {
-      console.error('Erro ao salvar tipo de fornecedor:', error);
-      showAlert('Erro ao salvar tipo de fornecedor. Por favor, tente novamente.', 'error');
+      console.error('Erro ao salvar tipo:', error);
+      setAlert({
+        open: true,
+        message: 'Erro ao salvar tipo de fornecedor. Por favor, tente novamente.',
+        severity: 'error'
+      });
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   const handleEdit = (id: number) => {
+    // Verificar permissão antes de executar a ação
+    if (!canEdit) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para editar tipos de fornecedores.',
+        severity: 'error'
+      });
+      return;
+    }
+
     const tipo = tipos.find(t => t.id === id);
     if (tipo) {
-      setNome(tipo.nome);
-      setDescricao(tipo.descricao || '');
+      setForm({ nome: tipo.nome });
       setEditId(id);
-      // Rolar para o topo do formulário
-      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
   const handleDelete = async (id: number) => {
+    // Verificar permissão antes de executar a ação
+    if (!canDelete) {
+      setAlert({
+        open: true,
+        message: 'Você não tem permissão para excluir tipos de fornecedores.',
+        severity: 'error'
+      });
+      return;
+    }
+
     if (!window.confirm('Tem certeza que deseja excluir este tipo de fornecedor?')) {
       return;
     }
 
     try {
-      setIsLoading(true);
+      setLoading(true);
       const success = await tiposFornecedoresService.delete(id);
       
       if (success) {
         setTipos(tipos.filter(t => t.id !== id));
         if (editId === id) {
-          setNome('');
-          setDescricao('');
+          setForm({ nome: '' });
           setEditId(null);
         }
-        showAlert('Tipo de fornecedor excluído com sucesso!', 'success');
+        setAlert({
+          open: true,
+          message: 'Tipo de fornecedor excluído com sucesso!',
+          severity: 'success'
+        });
       }
     } catch (error) {
-      console.error('Erro ao excluir tipo de fornecedor:', error);
-      showAlert('Erro ao excluir tipo de fornecedor. Verifique se não existem fornecedores vinculados a este tipo.', 'error');
+      console.error('Erro ao excluir tipo:', error);
+      setAlert({
+        open: true,
+        message: 'Erro ao excluir tipo de fornecedor. Verifique se não há fornecedores usando este tipo.',
+        severity: 'error'
+      });
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   const handleCancel = () => {
-    setNome('');
-    setDescricao('');
+    setForm({ nome: '' });
     setEditId(null);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
-    <Box sx={{ position: 'relative' }}>
+    <Box>
       <Typography variant="h4" gutterBottom color="primary">
-        Cadastro de Tipos de Fornecedores
+        {(canCreate || canEdit) ? 'Cadastro de Tipos de Fornecedores' : 'Consulta de Tipos de Fornecedores'}
       </Typography>
       
-      {/* Loading Overlay */}
-      {isLoading && (
-        <Box sx={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 9999
-        }}>
-          <CircularProgress color="primary" size={60} />
+      {/* Mensagem informativa para usuários apenas com permissão de visualização */}
+      {!canCreate && !canEdit && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Você tem apenas permissão de visualização para tipos de fornecedores. Não é possível criar, editar ou excluir registros.
+        </Alert>
+      )}
+      
+      {loading && (
+        <Box display="flex" justifyContent="center" my={4}>
+          <CircularProgress />
         </Box>
       )}
       
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
-        <Box>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                {editId ? 'Editar Tipo' : 'Novo Tipo'}
-              </Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <TextField
-                  label="Nome do Tipo"
-                  value={nome}
-                  onChange={e => setNome(e.target.value)}
-                  fullWidth
-                  disabled={isLoading}
-                />
-                <TextField
-                  label="Descrição"
-                  value={descricao}
-                  onChange={e => setDescricao(e.target.value)}
-                  fullWidth
-                  multiline
-                  rows={3}
-                  disabled={isLoading}
-                />
-                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-                  {editId && (
-                    <Button 
-                      variant="outlined" 
-                      onClick={handleCancel}
-                      disabled={isLoading}
-                    >
-                      Cancelar
-                    </Button>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: (canCreate || canEdit) ? '1fr 1fr' : '1fr' }, gap: 3 }}>
+        {/* Só mostra o formulário se tem permissão para criar ou editar */}
+        {(canCreate || canEdit) && (
+          <Box>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  {editId ? 'Editar Tipo' : 'Novo Tipo'}
+                </Typography>
+                <Box display="flex" flexDirection="column" gap={2}>
+                  <TextField
+                    label="Nome do Tipo"
+                    name="nome"
+                    value={form.nome}
+                    onChange={handleChange}
+                    fullWidth
+                    required
+                    placeholder="Ex: Laboratório, Distribuidora, etc."
+                  />
+                  
+                  <Box display="flex" gap={2}>
+                    {/* Só mostra o botão se tem permissão */}
+                    {((editId && canEdit) || (!editId && canCreate)) && (
+                      <Button variant="contained" color="primary" onClick={handleAddOrEdit}>
+                        {editId ? 'Salvar' : 'Adicionar'}
+                      </Button>
+                    )}
+                    
+                    {editId && (
+                      <Button variant="outlined" onClick={handleCancel}>
+                        Cancelar
+                      </Button>
+                    )}
+                  </Box>
+                  
+                  {/* Mensagem explicativa se não tem permissão */}
+                  {!canCreate && !editId && (
+                    <Alert severity="info">
+                      Você não tem permissão para criar tipos de fornecedores. Apenas visualização permitida.
+                    </Alert>
                   )}
-                  <Button 
-                    variant="contained" 
-                    color="primary" 
-                    onClick={handleAddOrEdit}
-                    disabled={isLoading || !nome.trim()}
-                  >
-                    {editId ? 'Salvar Alterações' : 'Adicionar Tipo'}
-                  </Button>
+                  
+                  {!canEdit && editId && (
+                    <Alert severity="info">
+                      Você não tem permissão para editar tipos de fornecedores. Apenas visualização permitida.
+                    </Alert>
+                  )}
                 </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Box>
+              </CardContent>
+            </Card>
+          </Box>
+        )}
         
         <Box>
           <Card>
@@ -218,78 +275,38 @@ const TiposFornecedores: React.FC = () => {
               <Typography variant="h6" gutterBottom>
                 Tipos Cadastrados
               </Typography>
-              {tipos.length === 0 ? (
-                <Typography variant="body1" color="textSecondary" align="center" sx={{ py: 4 }}>
-                  Nenhum tipo de fornecedor cadastrado.
-                </Typography>
-              ) : (
-                <List>
-                  {tipos.map(tipo => (
-                    <ListItem 
-                      key={tipo.id} 
-                      divider
-                      sx={{
-                        '&:hover': {
-                          backgroundColor: 'action.hover',
-                          cursor: 'pointer'
-                        },
-                        transition: 'background-color 0.2s',
-                      }}
-                    >
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="subtitle1">{tipo.nome}</Typography>
-                        {tipo.descricao && (
-                          <Typography variant="body2" color="textSecondary">
-                            {tipo.descricao}
-                          </Typography>
-                        )}
-                      </Box>
-                      <ListItemSecondaryAction>
-                        <IconButton 
-                          edge="end" 
-                          aria-label="editar" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEdit(tipo.id);
-                          }}
-                          disabled={isLoading}
-                        >
+              <List>
+                {tipos.map(tipo => (
+                  <ListItem key={tipo.id} divider>
+                    <ListItemText primary={tipo.nome} />
+                    <ListItemSecondaryAction>
+                      {/* Só mostra botões se tem permissão */}
+                      {canEdit && (
+                        <IconButton edge="end" aria-label="edit" onClick={() => handleEdit(tipo.id)}>
                           <EditIcon />
                         </IconButton>
-                        <IconButton 
-                          edge="end" 
-                          aria-label="excluir"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(tipo.id);
-                          }}
-                          disabled={isLoading}
-                          sx={{ color: 'error.main' }}
-                        >
+                      )}
+                      {canDelete && (
+                        <IconButton edge="end" aria-label="delete" onClick={() => handleDelete(tipo.id)}>
                           <DeleteIcon />
                         </IconButton>
-                      </ListItemSecondaryAction>
-                    </ListItem>
-                  ))}
-                </List>
-              )}
+                      )}
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                ))}
+              </List>
             </CardContent>
           </Card>
         </Box>
       </Box>
       
-      {/* Snackbar para feedback */}
       <Snackbar
         open={alert.open}
         autoHideDuration={6000}
-        onClose={handleCloseAlert}
+        onClose={() => setAlert({ ...alert, open: false })}
         anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
-        <Alert 
-          onClose={handleCloseAlert} 
-          severity={alert.severity} 
-          sx={{ width: '100%' }}
-        >
+        <Alert onClose={() => setAlert({ ...alert, open: false })} severity={alert.severity}>
           {alert.message}
         </Alert>
       </Snackbar>

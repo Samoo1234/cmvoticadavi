@@ -141,23 +141,44 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const hasPermission = (rota: string, acao: 'ver' | 'criar' | 'editar' | 'excluir'): boolean => {
+    // Log para debug
+    console.log(`🔐 Verificando permissão: ${rota} (${acao}) para usuário:`, {
+      email: user?.email,
+      isAdmin: user?.is_admin,
+      temPermissoes: !!user?.permissoes,
+      quantidadePermissoes: user?.permissoes?.length || 0
+    });
+
     // Se é admin, tem todas as permissões
-    if (user?.is_admin) return true;
+    if (user?.is_admin) {
+      console.log(`✅ Admin - permissão ${rota} (${acao}) concedida`);
+      return true;
+    }
     
     // Se não tem usuário ou permissões, não tem acesso
-    if (!user?.permissoes) return false;
+    if (!user?.permissoes) {
+      console.log(`❌ Sem permissões - permissão ${rota} (${acao}) negada`);
+      return false;
+    }
     
     // Buscar a permissão específica
     const permissao = user.permissoes.find((p: any) => p.funcionalidade?.rota === rota);
-    if (!permissao) return false;
-    
-    switch (acao) {
-      case 'ver': return permissao.pode_ver;
-      case 'criar': return permissao.pode_criar;
-      case 'editar': return permissao.pode_editar;
-      case 'excluir': return permissao.pode_excluir;
-      default: return false;
+    if (!permissao) {
+      console.log(`❌ Permissão não encontrada - ${rota} (${acao}) negada`);
+      return false;
     }
+    
+    let resultado = false;
+    switch (acao) {
+      case 'ver': resultado = permissao.pode_ver; break;
+      case 'criar': resultado = permissao.pode_criar; break;
+      case 'editar': resultado = permissao.pode_editar; break;
+      case 'excluir': resultado = permissao.pode_excluir; break;
+      default: resultado = false;
+    }
+
+    console.log(`${resultado ? '✅' : '❌'} Permissão ${rota} (${acao}) ${resultado ? 'concedida' : 'negada'}`, permissao);
+    return resultado;
   };
 
   const value = {
@@ -172,6 +193,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     trocarSenha,
     reloadUser,
   };
+
+  // Log do estado atual para debug
+  console.log(`🔍 AuthContext State:`, {
+    userEmail: user?.email,
+    isAdmin: user?.is_admin === true,
+    temPermissoes: !!user?.permissoes
+  });
 
   return (
     <AuthContext.Provider value={value}>

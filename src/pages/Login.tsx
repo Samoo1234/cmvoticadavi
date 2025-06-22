@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import { Visibility, VisibilityOff, Email, Lock } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -21,6 +22,7 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   
   const { signIn } = useAuth();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,8 +44,11 @@ const Login: React.FC = () => {
         } else {
           setError(error);
         }
+      } else {
+        // Login bem-sucedido - redirecionar para dashboard
+        console.log('✅ Login bem-sucedido, redirecionando para dashboard');
+        navigate('/', { replace: true });
       }
-      // Se não há erro, o AuthContext vai redirecionar automaticamente
     } catch (err) {
       setError('Erro inesperado ao fazer login');
       console.error('Erro login:', err);

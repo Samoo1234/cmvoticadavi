@@ -100,8 +100,7 @@ const Fornecedores: React.FC = () => {
         nome: form.nome?.trim(),
         cnpj: form.cnpj?.trim(),
         tipo: form.tipo,
-        endereco: form.endereco || '',
-        filiais: form.filiais || ''
+        endereco: form.endereco || ''
       };
       
       if (editId) {
@@ -272,14 +271,7 @@ const Fornecedores: React.FC = () => {
                       onChange={handleChange}
                       fullWidth
                     />
-                    <TextField
-                      label="Filiais Atendidas"
-                      name="filiais"
-                      value={form.filiais || ''}
-                      onChange={handleChange}
-                      fullWidth
-                      placeholder="Ex: Matriz, Filial 1, Filial 2"
-                    />
+
                     
                     {/* Só mostra o botão se tem permissão */}
                     {((editId && canEdit) || (!editId && canCreate)) && (
@@ -317,7 +309,7 @@ const Fornecedores: React.FC = () => {
                     <ListItem key={fornecedor.id} divider>
                       <ListItemText
                         primary={`${fornecedor.nome} (${fornecedor.tipo})`}
-                        secondary={`CNPJ: ${fornecedor.cnpj} | Endereço: ${fornecedor.endereco} | Filiais: ${fornecedor.filiais}`}
+                        secondary={`CNPJ: ${fornecedor.cnpj} | Endereço: ${fornecedor.endereco}`}
                       />
                       <ListItemSecondaryAction>
                         {/* Só mostra botões se tem permissão */}

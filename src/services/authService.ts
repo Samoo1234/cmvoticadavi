@@ -49,7 +49,7 @@ class AuthService {
       const usuario = usuarios[0];
 
       // 2. Verificar senha (temporário - aceitar qualquer senha por enquanto)
-      let senhaValida = true; // Aceitar qualquer senha até implementar sistema completo
+      const senhaValida = true; // Aceitar qualquer senha até implementar sistema completo
 
       if (!senhaValida) {
         return { user: null, error: 'Senha incorreta' };

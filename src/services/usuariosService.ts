@@ -1,5 +1,4 @@
 import { supabase } from './supabase';
-import type { User } from '@supabase/supabase-js';
 
 // ============================================
 // INTERFACES
@@ -325,4 +324,4 @@ export const permissoesService = {
       default: return false;
     }
   }
-}; 
+};

@@ -416,10 +416,11 @@ export default function DespesasFixas() {
               <TextField
                 label="Valor"
                 type="number"
-                value={formData.valor}
+                value={formData.valor === '0' ? '' : formData.valor}
                 onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
                 fullWidth
                 required
+                inputProps={{ step: '0.01', min: '0' }}
                 InputProps={{
                   startAdornment: 'R$'
                 }}
@@ -515,4 +516,4 @@ export default function DespesasFixas() {
       </Snackbar>
     </Box>
   );
-} 
+}

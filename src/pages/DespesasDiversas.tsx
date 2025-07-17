@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Box, Typography, Button, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, FormControl, InputLabel, Select,
-  IconButton, Tooltip, Alert, Snackbar, InputAdornment
+  IconButton, Tooltip, Alert, Snackbar
 } from '@mui/material';
 import {
   Add as AddIcon, Payment as PaymentIcon, Pending as PendingIcon, Edit as EditIcon, Delete as DeleteIcon,
@@ -45,17 +45,16 @@ export default function DespesasDiversas() {
   
   // Filtros
   const [filtros, setFiltros] = useState({
-    status: 'todos',
-    busca: ''
+    filial_id: 'todas',
+    data_inicial: '',
+    data_final: ''
   });
 
   const [formData, setFormData] = useState({
     filial_id: '',
     categoria_id: '',
-    nome: '',
     valor: '',
-    data_despesa: new Date().toISOString().split('T')[0],
-    observacao: ''
+    data_despesa: new Date().toISOString().split('T')[0]
   });
 
   const [paymentData, setPaymentData] = useState({
@@ -108,20 +107,19 @@ export default function DespesasDiversas() {
   const aplicarFiltros = () => {
     let filtered = [...despesas];
 
-    // Filtro por status
-    if (filtros.status !== 'todos') {
-      filtered = filtered.filter(d => d.status === filtros.status);
+    // Filtro por filial
+    if (filtros.filial_id !== 'todas') {
+      filtered = filtered.filter(d => d.filial_id.toString() === filtros.filial_id);
     }
 
-    // Filtro por busca
-    if (filtros.busca) {
-      const busca = filtros.busca.toLowerCase();
-      filtered = filtered.filter(d => 
-        d.nome.toLowerCase().includes(busca) ||
-        d.filial_nome.toLowerCase().includes(busca) ||
-        (d.categoria_nome && d.categoria_nome.toLowerCase().includes(busca)) ||
-        (d.observacao && d.observacao.toLowerCase().includes(busca))
-      );
+    // Filtro por data inicial
+    if (filtros.data_inicial) {
+      filtered = filtered.filter(d => d.data_despesa >= filtros.data_inicial);
+    }
+
+    // Filtro por data final
+    if (filtros.data_final) {
+      filtered = filtered.filter(d => d.data_despesa <= filtros.data_final);
     }
 
     setDespesasFiltradas(filtered);
@@ -157,20 +155,16 @@ export default function DespesasDiversas() {
       setFormData({
         filial_id: despesa.filial_id.toString(),
         categoria_id: despesa.categoria_id?.toString() || '',
-        nome: despesa.nome,
         valor: despesa.valor.toString(),
-        data_despesa: despesa.data_despesa,
-        observacao: despesa.observacao || ''
+        data_despesa: despesa.data_despesa
       });
     } else {
       setEditingId(null);
       setFormData({
         filial_id: '',
         categoria_id: '',
-        nome: '',
         valor: '',
-        data_despesa: new Date().toISOString().split('T')[0],
-        observacao: ''
+        data_despesa: new Date().toISOString().split('T')[0]
       });
     }
     setOpenDialog(true);
@@ -197,11 +191,6 @@ export default function DespesasDiversas() {
 
   const handleSubmit = async () => {
     try {
-      if (!formData.nome.trim()) {
-        showAlert('Nome é obrigatório', 'error');
-        return;
-      }
-
       if (!formData.valor || parseFloat(formData.valor) <= 0) {
         showAlert('Valor deve ser maior que zero', 'error');
         return;
@@ -215,10 +204,9 @@ export default function DespesasDiversas() {
       const despesaData = {
         filial_id: parseInt(formData.filial_id),
         categoria_id: formData.categoria_id ? parseInt(formData.categoria_id) : undefined,
-        nome: formData.nome.trim(),
+        nome: 'Despesa Diversa',
         valor: parseFloat(formData.valor),
         data_despesa: formData.data_despesa,
-        observacao: formData.observacao.trim() || undefined,
         status: 'pendente' as const
       };
 
@@ -289,8 +277,9 @@ export default function DespesasDiversas() {
 
   const clearFilters = () => {
     setFiltros({
-      status: 'todos',
-      busca: ''
+      filial_id: 'todas',
+      data_inicial: '',
+      data_final: ''
     });
   };
 
@@ -369,30 +358,42 @@ export default function DespesasDiversas() {
             Filtros
           </Typography>
           <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-            <FormControl size="small" sx={{ minWidth: 120 }}>
-              <InputLabel>Status</InputLabel>
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel>Filial</InputLabel>
               <Select
-                value={filtros.status}
-                onChange={(e) => setFiltros({ ...filtros, status: e.target.value })}
-                label="Status"
+                value={filtros.filial_id}
+                onChange={(e) => setFiltros({ ...filtros, filial_id: e.target.value })}
+                label="Filial"
               >
-                <MenuItem value="todos">Todos</MenuItem>
-                <MenuItem value="pendente">Pendentes</MenuItem>
-                <MenuItem value="pago">Pagas</MenuItem>
+                <MenuItem value="todas">Todas</MenuItem>
+                {filiais.map((filial) => (
+                  <MenuItem key={filial.id} value={filial.id.toString()}>
+                    {filial.nome}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
             <TextField
-              label="Buscar"
+              label="Data Inicial"
+              type="date"
               size="small"
-              value={filtros.busca}
-              onChange={(e) => setFiltros({ ...filtros, busca: e.target.value })}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon />
-                  </InputAdornment>
-                )
+              value={filtros.data_inicial}
+              onChange={(e) => setFiltros({ ...filtros, data_inicial: e.target.value })}
+              InputLabelProps={{
+                shrink: true,
               }}
+              sx={{ minWidth: 150 }}
+            />
+            <TextField
+              label="Data Final"
+              type="date"
+              size="small"
+              value={filtros.data_final}
+              onChange={(e) => setFiltros({ ...filtros, data_final: e.target.value })}
+              InputLabelProps={{
+                shrink: true,
+              }}
+              sx={{ minWidth: 150 }}
             />
             <Button
               variant="outlined"
@@ -565,26 +566,18 @@ export default function DespesasDiversas() {
         </DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <TextField
-                label="Nome"
-                value={formData.nome}
-                onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                fullWidth
-                required
-              />
-              <TextField
-                label="Valor"
-                type="number"
-                value={formData.valor}
-                onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
-                fullWidth
-                required
-                InputProps={{
-                  startAdornment: 'R$'
-                }}
-              />
-            </Box>
+            <TextField
+              label="Valor"
+              type="number"
+              value={formData.valor === '0' ? '' : formData.valor}
+              onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
+              fullWidth
+              required
+              inputProps={{ step: '0.01', min: '0' }}
+              InputProps={{
+                startAdornment: 'R$'
+              }}
+            />
             <Box sx={{ display: 'flex', gap: 2 }}>
               <FormControl fullWidth required>
                 <InputLabel>Filial</InputLabel>
@@ -624,14 +617,6 @@ export default function DespesasDiversas() {
               fullWidth
               required
               InputLabelProps={{ shrink: true }}
-            />
-            <TextField
-              label="Observação"
-              value={formData.observacao}
-              onChange={(e) => setFormData({ ...formData, observacao: e.target.value })}
-              fullWidth
-              multiline
-              rows={3}
             />
           </Box>
         </DialogContent>
@@ -701,4 +686,4 @@ export default function DespesasDiversas() {
       </Snackbar>
     </Box>
   );
-} 
+}

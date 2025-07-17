@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
+import type { User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabase';
 import { authService, type AuthUser } from '../services/authService';
 import { createFallbackUser } from '../utils/authFallback';
@@ -128,7 +128,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } else {
         return { error: result.error || 'Erro ao trocar senha' };
       }
-    } catch (error: any) {
+    } catch {
       return { error: 'Erro interno ao trocar senha' };
     }
   };
@@ -206,4 +206,4 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       {children}
     </AuthContext.Provider>
   );
-}; 
+};

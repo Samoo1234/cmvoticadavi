@@ -625,10 +625,15 @@ const Titulos: React.FC = () => {
                     <TextField
                       label="Valor"
                       name="valor"
-                      value={form.valor || ''}
+                      type="number"
+                      value={form.valor === '0' ? '' : form.valor || ''}
                       onChange={handleChange}
                       fullWidth
                       required
+                      inputProps={{ step: '0.01', min: '0' }}
+                      InputProps={{
+                        startAdornment: 'R$'
+                      }}
                     />
                   </>
                 ) : (
@@ -663,10 +668,15 @@ const Titulos: React.FC = () => {
                           />
                           <TextField
                             label="Valor"
-                            value={item.valor}
+                            type="number"
+                            value={item.valor === '0' ? '' : item.valor}
                             onChange={(e) => handleItemTituloChange(index, 'valor', e.target.value)}
                             sx={{ flex: 1 }}
                             required
+                            inputProps={{ step: '0.01', min: '0' }}
+                            InputProps={{
+                              startAdornment: 'R$'
+                            }}
                           />
                         </Box>
                       ))}
@@ -743,4 +753,4 @@ const Titulos: React.FC = () => {
   );
 };
 
-export default Titulos; 
+export default Titulos;

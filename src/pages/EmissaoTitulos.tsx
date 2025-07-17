@@ -857,7 +857,7 @@ const EmissaoTitulos: React.FC = () => {
               <ListItem key={titulo.id} divider>
                 <ListItemText
                   primary={`${titulo.numero || ''} | ${titulo.tipo} | ${titulo.fornecedor} | ${titulo.filial}`}
-                  secondary={`Vencimento: ${titulo.vencimento} | Valor: R$ ${parseFloat(titulo.valor).toFixed(2)} | Status: ${titulo.status || 'Em aberto'} | Pagamento: ${titulo.pagamento || '-'}`}
+                  secondary={`Vencimento: ${formatDateToBrazilian(titulo.vencimento)} | Valor: R$ ${parseFloat(titulo.valor).toFixed(2)} | Status: ${titulo.status || 'Em aberto'} | Pagamento: ${titulo.pagamento ? formatDateToBrazilian(titulo.pagamento) : '-'}`}
                 />
                 <ListItemSecondaryAction>
                   <IconButton edge="end" aria-label="pagar" onClick={() => handlePagar(titulo.id)} disabled={titulo.status === 'pago'}>

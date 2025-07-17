@@ -24,6 +24,13 @@ import { fornecedoresService } from '../services/fornecedoresService';
 import { tiposFornecedoresService } from '../services/tiposFornecedoresService';
 import { useAuth } from '../contexts/AuthContext';
 
+// Função para formatar data no formato dd/mm/yyyy
+const formatarData = (data: string): string => {
+  if (!data) return '';
+  const dataObj = new Date(data + 'T00:00:00');
+  return dataObj.toLocaleDateString('pt-BR');
+};
+
 // Interface local para o formulário
 interface FormTitulo {
   id?: number;
@@ -727,7 +734,7 @@ const Titulos: React.FC = () => {
                   <ListItem key={titulo.id} divider>
                     <ListItemText
                       primary={`${titulo.filial} - ${titulo.fornecedor} (${titulo.tipo})`}
-                      secondary={`Vencimento: ${titulo.vencimento} | Valor: ${titulo.valor} | Obs: ${titulo.observacoes}`}
+                      secondary={`Vencimento: ${formatarData(titulo.vencimento)} | Valor: R$ ${titulo.valor} | Obs: ${titulo.observacoes}`}
                     />
                     <ListItemSecondaryAction>
                       {/* Só mostra botões se tem permissão */}

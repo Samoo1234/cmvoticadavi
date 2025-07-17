@@ -25,7 +25,11 @@ import {
   InputAdornment,
   FormControlLabel,
   Checkbox,
-  FormGroup
+  FormGroup,
+  Pagination,
+  Select,
+  FormControl,
+  InputLabel
 } from '@mui/material';
 
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -72,6 +76,10 @@ const EmissaoTitulos: React.FC = () => {
   const [filiais, setFiliais] = useState<{ id: number, nome: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [alert, setAlert] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({ open: false, message: '', severity: 'info' });
+  
+  // Estados para paginação
+  const [paginaAtual, setPaginaAtual] = useState(1);
+  const [itensPorPagina, setItensPorPagina] = useState(20);
   
   // Estados para o modal de pagamento
   const [modalPagamento, setModalPagamento] = useState(false);
@@ -257,6 +265,22 @@ const EmissaoTitulos: React.FC = () => {
     }
     
     setTitulosFiltrados(resultado);
+    setPaginaAtual(1); // Resetar para primeira página quando aplicar filtros
+  };
+
+  // Funções de paginação
+  const totalPaginas = Math.ceil(titulosFiltrados.length / itensPorPagina);
+  const indiceInicial = (paginaAtual - 1) * itensPorPagina;
+  const indiceFinal = indiceInicial + itensPorPagina;
+  const titulosPaginados = titulosFiltrados.slice(indiceInicial, indiceFinal);
+
+  const handleMudarPagina = (novaPagina: number) => {
+    setPaginaAtual(novaPagina);
+  };
+
+  const handleMudarItensPorPagina = (novosItens: number) => {
+    setItensPorPagina(novosItens);
+    setPaginaAtual(1);
   };
 
   // Funções para ações
@@ -868,11 +892,31 @@ const EmissaoTitulos: React.FC = () => {
               <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleGerarPDF}>Gerar PDF</Button>
             </Box>
           </Box>
+          {/* Informações de paginação */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="body2" color="textSecondary">
+              Mostrando {titulosFiltrados.length === 0 ? 0 : indiceInicial + 1} a {Math.min(indiceFinal, titulosFiltrados.length)} de {titulosFiltrados.length} títulos
+            </Typography>
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel>Itens por página</InputLabel>
+              <Select
+                value={itensPorPagina}
+                label="Itens por página"
+                onChange={(e) => handleMudarItensPorPagina(Number(e.target.value))}
+              >
+                <MenuItem value={10}>10</MenuItem>
+                <MenuItem value={20}>20</MenuItem>
+                <MenuItem value={50}>50</MenuItem>
+                <MenuItem value={100}>100</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+
           <List>
             {titulosFiltrados.length === 0 && (
               <Typography color="textSecondary">Nenhum título encontrado.</Typography>
             )}
-            {titulosFiltrados.map(titulo => (
+            {titulosPaginados.map(titulo => (
               <ListItem key={titulo.id} divider>
                 <ListItemText
                   primary={`${titulo.numero || ''} | ${titulo.tipo || 'Tipo não especificado'} | ${titulo.fornecedor} | ${titulo.filial}`}
@@ -894,6 +938,21 @@ const EmissaoTitulos: React.FC = () => {
               </ListItem>
             ))}
           </List>
+
+          {/* Controles de paginação */}
+          {totalPaginas > 1 && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+              <Pagination
+                count={totalPaginas}
+                page={paginaAtual}
+                onChange={(_, novaPagina) => handleMudarPagina(novaPagina)}
+                color="primary"
+                size="large"
+                showFirstButton
+                showLastButton
+              />
+            </Box>
+          )}
         </CardContent>
       </Card>
     </Box>

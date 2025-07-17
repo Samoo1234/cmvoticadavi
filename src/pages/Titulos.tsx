@@ -18,7 +18,7 @@ import {
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { titulosService } from '../services/titulosService';
+import { titulosService, type Titulo } from '../services/titulosService';
 import { filiaisService } from '../services/filiaisService';
 import { fornecedoresService } from '../services/fornecedoresService';
 import { useAuth } from '../contexts/AuthContext';
@@ -299,7 +299,7 @@ const Titulos: React.FC = () => {
 
         try {
           // Criar títulos sequencialmente para garantir numeração correta
-          const titulosCriados = [];
+          const titulosCriados: Titulo[] = [];
           
           for (const item of itensTitulos) {
             // Gerar próximo número sequencial para cada título

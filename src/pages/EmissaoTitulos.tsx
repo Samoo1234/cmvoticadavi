@@ -32,6 +32,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import PaymentIcon from '@mui/icons-material/Payment';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import EditIcon from '@mui/icons-material/Edit';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { filiaisService } from '../services/filiaisService';
 import { fornecedoresService } from '../services/fornecedoresService';
 import { tiposFornecedoresService } from '../services/tiposFornecedoresService';
@@ -88,6 +89,9 @@ const EmissaoTitulos: React.FC = () => {
   const carregarDados = async () => {
     setIsLoading(true);
     try {
+      console.log('=== DEBUG EMISSAO TITULOS ===');
+      console.log('Iniciando carregamento de dados...');
+      
       // Carregar dados dos dropdowns e títulos
       const [dadosTipos, dadosFornecedores, dadosFiliais, dadosTitulos] = await Promise.all([
         tiposFornecedoresService.getAll(),
@@ -95,6 +99,14 @@ const EmissaoTitulos: React.FC = () => {
         filiaisService.getAll(),
         titulosService.getAll()
       ]);
+      
+      console.log('Dados carregados:', {
+        tipos: dadosTipos?.length || 0,
+        fornecedores: dadosFornecedores?.length || 0,
+        filiais: dadosFiliais?.length || 0,
+        titulos: dadosTitulos?.length || 0
+      });
+      console.log('Títulos brutos do banco:', dadosTitulos);
 
       // Mapear tipos para o formato {id, nome}
       const tiposFormatados = dadosTipos.map(t => ({
@@ -121,13 +133,11 @@ const EmissaoTitulos: React.FC = () => {
       const titulosFormatados = dadosTitulos.map(titulo => {
         const fornecedor = fornecedoresFormatados.find(f => f.id === titulo.fornecedor_id);
         const filial = filiaisFormatadas.find(f => f.id === titulo.filial_id);
-        const tipo = tiposFormatados.find(t => t.id === titulo.tipo_id);
 
         return {
           id: titulo.id,
           numero: titulo.numero,
-          tipo: tipo?.nome || 'Não especificado',
-          tipo_id: titulo.tipo_id,
+          tipo: titulo.tipo || 'Não especificado',
           fornecedor: fornecedor?.nome || 'Não especificado',
           fornecedor_id: titulo.fornecedor_id,
           filial: filial?.nome || 'Não especificada',
@@ -144,8 +154,14 @@ const EmissaoTitulos: React.FC = () => {
         };
       });
       
+      console.log('Títulos formatados:', titulosFormatados);
+      console.log('Quantidade de títulos formatados:', titulosFormatados.length);
+      
       setTitulos(titulosFormatados);
       setTitulosFiltrados(titulosFormatados);
+      
+      console.log('Estado atualizado com', titulosFormatados.length, 'títulos');
+      console.log('=== FIM DEBUG EMISSAO TITULOS ===');
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
       setAlert({
@@ -847,7 +863,10 @@ const EmissaoTitulos: React.FC = () => {
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
             <Typography variant="h6">Extrato de Títulos</Typography>
-                            <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleGerarPDF}>Gerar PDF</Button>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button variant="outlined" startIcon={<RefreshIcon />} onClick={carregarDados}>Atualizar</Button>
+              <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleGerarPDF}>Gerar PDF</Button>
+            </Box>
           </Box>
           <List>
             {titulosFiltrados.length === 0 && (
@@ -856,7 +875,7 @@ const EmissaoTitulos: React.FC = () => {
             {titulosFiltrados.map(titulo => (
               <ListItem key={titulo.id} divider>
                 <ListItemText
-                  primary={`${titulo.numero || ''} | ${titulo.tipo} | ${titulo.fornecedor} | ${titulo.filial}`}
+                  primary={`${titulo.numero || ''} | ${titulo.tipo || 'Tipo não especificado'} | ${titulo.fornecedor} | ${titulo.filial}`}
                   secondary={`Vencimento: ${formatDateToBrazilian(titulo.vencimento)} | Valor: R$ ${parseFloat(titulo.valor).toFixed(2)} | Status: ${titulo.status || 'Em aberto'} | Pagamento: ${titulo.pagamento ? formatDateToBrazilian(titulo.pagamento) : '-'}`}
                 />
                 <ListItemSecondaryAction>

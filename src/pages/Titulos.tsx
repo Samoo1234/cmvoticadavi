@@ -18,10 +18,9 @@ import {
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { titulosService, type Titulo } from '../services/titulosService';
+import { titulosService } from '../services/titulosService';
 import { filiaisService } from '../services/filiaisService';
 import { fornecedoresService } from '../services/fornecedoresService';
-import { tiposFornecedoresService } from '../services/tiposFornecedoresService';
 import { useAuth } from '../contexts/AuthContext';
 
 // Função para formatar data no formato dd/mm/yyyy
@@ -36,7 +35,6 @@ interface FormTitulo {
   id?: number;
   filial: string;
   fornecedor: string;
-  tipo: string; // Novo campo para tipo de fornecedor
   vencimento: string;
   valor: string;
   observacoes: string;
@@ -49,17 +47,16 @@ interface TituloItem {
 }
 
 // Tipo que combina os campos do formulário com os do banco de dados
-interface TituloCompleto extends Omit<Titulo, 'valor' | 'fornecedor_id' | 'filial_id' | 'tipo_id' | 'data_vencimento' | 'observacao'> {
+interface TituloCompleto extends Omit<Titulo, 'valor' | 'fornecedor_id' | 'filial_id' | 'data_vencimento' | 'observacao'> {
   filial: string;
   fornecedor: string;
-  tipo: string; // Novo campo para tipo de fornecedor
+  tipo: string; // Tipo obtido do fornecedor
   vencimento: string;
   valor: string; // string no formulário, number no banco
   observacoes: string;
   // Campos opcionais para compatibilidade
   fornecedor_id?: number;
   filial_id?: number;
-  tipo_id?: number; // ID do tipo de fornecedor
   data_vencimento?: string;
   observacao?: string;
 }
@@ -67,8 +64,7 @@ interface TituloCompleto extends Omit<Titulo, 'valor' | 'fornecedor_id' | 'filia
 const Titulos: React.FC = () => {
   const [titulos, setTitulos] = useState<TituloCompleto[]>([]);
   const [filiais, setFiliais] = useState<{id: number, nome: string}[]>([]);
-  const [fornecedores, setFornecedores] = useState<{id: number, nome: string}[]>([]);
-  const [tipos, setTipos] = useState<{id: number, nome: string}[]>([]);
+  const [fornecedores, setFornecedores] = useState<{id: number, nome: string, tipo: string}[]>([]);
   const [form, setForm] = useState<Partial<FormTitulo>>({});
   const [editId, setEditId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -95,11 +91,10 @@ const Titulos: React.FC = () => {
       setIsLoading(true);
       try {
         // Carregar títulos
-        const [dadosTitulos, dadosFiliais, dadosFornecedores, dadosTipos] = await Promise.all([
+        const [dadosTitulos, dadosFiliais, dadosFornecedores] = await Promise.all([
           titulosService.getAll(),
           filiaisService.getAll(),
-          fornecedoresService.getAll(),
-          tiposFornecedoresService.getAll()
+          fornecedoresService.getAll()
         ]);
 
         // Mapear filiais para o formato {id, nome}
@@ -109,41 +104,31 @@ const Titulos: React.FC = () => {
         }));
         setFiliais(filiaisFormatadas);
 
-        // Mapear fornecedores para o formato {id, nome}
+        // Mapear fornecedores para o formato {id, nome, tipo}
         const fornecedoresFormatados = dadosFornecedores.map(f => ({
           id: f.id,
-          nome: f.nome
+          nome: f.nome,
+          tipo: f.tipo || 'Não especificado'
         }));
         setFornecedores(fornecedoresFormatados);
-        
-        // Mapear tipos para o formato {id, nome}
-        const tiposFormatados = dadosTipos.map(t => ({
-          id: t.id,
-          nome: t.nome
-        }));
-        setTipos(tiposFormatados);
 
         // Converter os dados dos títulos para o formato do formulário
-        const titulosFormatados: TituloCompleto[] = await Promise.all(
-          dadosTitulos.map(async (titulo) => {
-            // Buscar nome da filial
-            const filial = filiaisFormatadas.find(f => f.id === titulo.filial_id);
-            // Buscar nome do fornecedor
-            const fornecedor = fornecedoresFormatados.find(f => f.id === titulo.fornecedor_id);
-            // Buscar nome do tipo
-            const tipo = tiposFormatados.find(t => t.id === titulo.tipo_id);
-            
-            return {
-              ...titulo,
-              filial: filial?.nome || 'Filial não encontrada',
-              fornecedor: fornecedor?.nome || 'Fornecedor não encontrado',
-              tipo: tipo?.nome || 'Tipo não especificado',
-              vencimento: titulo.data_vencimento,
-              valor: titulo.valor.toString(),
-              observacoes: titulo.observacao || ''
-            };
-          })
-        );
+        const titulosFormatados: TituloCompleto[] = dadosTitulos.map((titulo) => {
+          // Buscar nome da filial
+          const filial = filiaisFormatadas.find(f => f.id === titulo.filial_id);
+          // Buscar fornecedor com tipo
+          const fornecedor = fornecedoresFormatados.find(f => f.id === titulo.fornecedor_id);
+          
+          return {
+            ...titulo,
+            filial: filial?.nome || 'Filial não encontrada',
+            fornecedor: fornecedor?.nome || 'Fornecedor não encontrado',
+            tipo: fornecedor?.tipo || 'Tipo não especificado',
+            vencimento: titulo.data_vencimento,
+            valor: titulo.valor.toString(),
+            observacoes: titulo.observacao || ''
+          };
+        });
         
         setTitulos(titulosFormatados);
       } catch (error) {
@@ -186,6 +171,8 @@ const Titulos: React.FC = () => {
   };
 
   const handleAddOrEdit = async () => {
+
+    
     // Verificar permissões antes de executar a ação
     if (editId && !canEdit) {
       setAlert({
@@ -217,7 +204,7 @@ const Titulos: React.FC = () => {
         return;
       }
     }
-    if (!form.filial || !form.fornecedor || !form.tipo || !form.vencimento || !form.valor || isNaN(parseFloat(form.valor))) {
+    if (!form.filial || !form.fornecedor || !form.vencimento || !form.valor || isNaN(parseFloat(form.valor))) {
       setAlert({
         open: true,
         message: 'Preencha todos os campos obrigatórios.',
@@ -252,30 +239,25 @@ const Titulos: React.FC = () => {
         return;
       }
       
-      // Encontrar o ID do tipo pelo nome
-      const tipoSelecionado = tipos.find(t => t.nome === form.tipo);
-      if (!tipoSelecionado) {
-        setAlert({
-          open: true,
-          message: 'Tipo não encontrado. Por favor, selecione um tipo válido.',
-          severity: 'error'
-        });
-        setIsLoading(false);
-        return;
-      }
+
+      
+      // Gerar próximo número sequencial
+      const proximoNumero = await titulosService.getProximoNumero();
       
       const tituloData = {
         // Mapear campos do formulário para o modelo do banco de dados
-        numero: `TIT-${Date.now()}`,
+        numero: proximoNumero,
         fornecedor_id: fornecedorSelecionado.id,
         filial_id: filialSelecionada.id,
-        tipo_id: tipoSelecionado.id, // Adicionando tipo_id
         valor: parseFloat(form.valor),
         data_emissao: new Date().toISOString(),
         data_vencimento: form.vencimento || '',
         status: 'pendente' as const,
-        observacao: form.observacoes || undefined
+        observacao: form.observacoes || undefined,
+        tipo: fornecedorSelecionado.tipo
       };
+
+
 
       // Não permite edição em modo de múltiplos títulos
       if (editId) {
@@ -305,9 +287,8 @@ const Titulos: React.FC = () => {
         // Cadastrar múltiplos títulos
         const fornecedorObj = fornecedores.find(f => f.nome === form.fornecedor);
         const filialObj = filiais.find(f => f.nome === form.filial);
-        const tipoObj = tipos.find(t => t.nome === form.tipo);
 
-        if (!fornecedorObj || !filialObj || !tipoObj) {
+        if (!fornecedorObj || !filialObj) {
           setAlert({
             open: true,
             message: 'Fornecedor ou filial não encontrado.',
@@ -317,38 +298,46 @@ const Titulos: React.FC = () => {
         }
 
         try {
-          // Preparar array de promessas para criar todos os títulos
-          const promessasTitulos = itensTitulos.map((item, index) => {
-            // Gerar número do título baseado no fornecedor e data
-            const numeroTitulo = `${fornecedorObj.nome.substring(0, 3).toUpperCase()}-${new Date().getTime()}-${index + 1}`;
+          // Criar títulos sequencialmente para garantir numeração correta
+          const titulosCriados = [];
+          
+          for (const item of itensTitulos) {
+            // Gerar próximo número sequencial para cada título
+            const numeroTitulo = await titulosService.getProximoNumero();
             
             const tituloData: Omit<Titulo, 'id'> = {
               fornecedor_id: fornecedorObj.id,
               filial_id: filialObj.id,
-              tipo_id: tipoObj.id, // Adicionando tipo_id
               numero: numeroTitulo,
+              tipo: fornecedorObj.tipo, // Incluir o tipo do fornecedor
               data_emissao: new Date().toISOString().split('T')[0],
               data_vencimento: item.vencimento,
               valor: parseFloat(item.valor),
               status: 'pendente',
               observacao: form.observacoes || ''
             };
-            return titulosService.create(tituloData);
-          });
-
-          // Executar todas as promessas
-          const titulosCriados = await Promise.all(promessasTitulos);
+            
+            const tituloCriado = await titulosService.create(tituloData);
+            if (tituloCriado) {
+              titulosCriados.push(tituloCriado);
+            }
+          }
           
           // Formatar os títulos criados para adicionar à lista
-          const novosTitulos = titulosCriados.map(titulo => ({
-            ...titulo,
-            filial: form.filial || '',
-            fornecedor: form.fornecedor || '',
-            tipo: form.tipo || '',
-            vencimento: titulo.data_vencimento || '',
-            valor: titulo.valor.toString(),
-            observacoes: titulo.observacao || ''
-          }));
+          const novosTitulos = titulosCriados.map(titulo => {
+            const filial = filiais.find(f => f.id === titulo.filial_id);
+            const fornecedor = fornecedores.find(f => f.id === titulo.fornecedor_id);
+            
+            return {
+              ...titulo,
+              filial: filial?.nome || 'Filial não encontrada',
+              fornecedor: fornecedor?.nome || 'Fornecedor não encontrado',
+              tipo: fornecedor?.tipo || 'Tipo não especificado',
+              vencimento: titulo.data_vencimento || '',
+              valor: titulo.valor.toString(),
+              observacoes: titulo.observacao || ''
+            };
+          });
 
           setTitulos([...titulos, ...novosTitulos]);
           setAlert({
@@ -375,14 +364,17 @@ const Titulos: React.FC = () => {
         const novoTitulo = await titulosService.create(tituloData);
         if (novoTitulo) {
           // Adicionar o novo título à lista
+          const filial = filiais.find(f => f.id === novoTitulo.filial_id);
+          const fornecedor = fornecedores.find(f => f.id === novoTitulo.fornecedor_id);
+          
           const novoTituloCompleto: TituloCompleto = {
             ...novoTitulo,
-            filial: form.filial,
-            fornecedor: form.fornecedor,
-            tipo: form.tipo,
-            vencimento: form.vencimento || '',
-            valor: form.valor || '0',
-            observacoes: form.observacoes || ''
+            filial: filial?.nome || 'Filial não encontrada',
+            fornecedor: fornecedor?.nome || 'Fornecedor não encontrado',
+            tipo: fornecedor?.tipo || 'Tipo não especificado',
+            vencimento: novoTitulo.data_vencimento || '',
+            valor: novoTitulo.valor.toString(),
+            observacoes: novoTitulo.observacao || ''
           };
           setTitulos([...titulos, novoTituloCompleto]);
           setAlert({
@@ -426,7 +418,6 @@ const Titulos: React.FC = () => {
         id: titulo.id,
         filial: titulo.filial,
         fornecedor: titulo.fornecedor,
-        tipo: titulo.tipo,
         vencimento: titulo.vencimento,
         valor: titulo.valor,
         observacoes: titulo.observacoes
@@ -595,27 +586,7 @@ const Titulos: React.FC = () => {
                     ))
                   )}
                 </TextField>
-                <TextField
-                  select
-                  fullWidth
-                  label="Tipo"
-                  name="tipo"
-                  value={form.tipo || ''}
-                  onChange={handleChange}
-                  margin="normal"
-                  required
-                  disabled={isLoading || tipos.length === 0}
-                >
-                  {tipos.length === 0 ? (
-                    <MenuItem disabled>Carregando tipos...</MenuItem>
-                  ) : (
-                    tipos.map((tipo) => (
-                      <MenuItem key={tipo.id} value={tipo.nome}>
-                        {tipo.nome}
-                      </MenuItem>
-                    ))
-                  )}
-                </TextField>
+
                 {/* Campos normais ou campos para múltiplos títulos */}
                 {!multiplosTitulos ? (
                   <>
@@ -733,7 +704,7 @@ const Titulos: React.FC = () => {
                 {titulos.map(titulo => (
                   <ListItem key={titulo.id} divider>
                     <ListItemText
-                      primary={`${titulo.filial} - ${titulo.fornecedor} (${titulo.tipo})`}
+                      primary={`${titulo.filial} - ${titulo.fornecedor} (${titulo.tipo || 'Tipo não especificado'})`}
                       secondary={`Vencimento: ${formatarData(titulo.vencimento)} | Valor: R$ ${titulo.valor} | Obs: ${titulo.observacoes}`}
                     />
                     <ListItemSecondaryAction>

@@ -9,6 +9,8 @@ export interface CustoOS {
   custo_armacoes: number;
   custo_mkt: number;
   outros_custos: number;
+  medico_id?: number;
+  numero_tco?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -21,6 +23,8 @@ interface CustoOSInput {
   custo_armacoes: number;
   custo_mkt: number;
   outros_custos: number;
+  medico_id?: number;
+  numero_tco?: string;
 }
 
 /**

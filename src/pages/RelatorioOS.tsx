@@ -5,6 +5,7 @@ import { filiaisService } from '../services/filiaisService';
 import type { Filial } from '../services/filiaisService';
 import { custoOSService } from '../services/custoOSService';
 import type { CustoOS } from '../services/custoOSService';
+import { medicosService } from '../services/medicosService';
 import { formatDateToBrazilian } from '../utils/dateUtils';
 import { RelatoriosPDFService } from '../services/relatoriosPDFService';
 
@@ -20,6 +21,8 @@ interface OS {
   custoArmacoes: number;
   custoMkt: number;
   outrosCustos: number;
+  medico_id?: number;
+  numero_tco?: string;
 }
 
 // Função para converter CustoOS para o formato OS usado no componente
@@ -32,23 +35,30 @@ const mapCustoOSToOS = (custoOS: CustoOS, filialNome: string): OS => ({
   custoLentes: custoOS.custo_lentes,
   custoArmacoes: custoOS.custo_armacoes,
   custoMkt: custoOS.custo_mkt,
-  outrosCustos: custoOS.outros_custos
+  outrosCustos: custoOS.outros_custos,
+  medico_id: custoOS.medico_id,
+  numero_tco: custoOS.numero_tco
 });
 
 const RelatorioOS: React.FC = () => {
   const [filtros, setFiltros] = useState({ filial: '', dataInicial: '', dataFinal: '' });
   const [osList, setOsList] = useState<OS[]>([]);
   const [filiais, setFiliais] = useState<Filial[]>([]);
+  const [medicos, setMedicos] = useState<{id: number, nome: string}[]>([]);
   const [carregandoFiliais, setCarregandoFiliais] = useState(true);
   const [carregandoOS, setCarregandoOS] = useState(true);
   const [filialMap, setFilialMap] = useState<Map<number, string>>(new Map());
   const [alert, setAlert] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({ open: false, message: '', severity: 'info' });
 
   useEffect(() => {
-    const buscarFiliais = async () => {
+    const buscarDados = async () => {
       try {
         setCarregandoFiliais(true);
-        const filiaisData = await filiaisService.getAll();
+        const [filiaisData, medicosData] = await Promise.all([
+          filiaisService.getAll(),
+          medicosService.getAll()
+        ]);
+        
         setFiliais(filiaisData);
         
         // Criar um mapa de ID da filial para nome da filial para uso posterior
@@ -59,14 +69,21 @@ const RelatorioOS: React.FC = () => {
           }
         });
         setFilialMap(novoFilialMap);
+        
+        // Formatar dados dos médicos
+        const medicosFormatados = medicosData.map((m: any) => ({
+          id: m.id!,
+          nome: m.nome
+        }));
+        setMedicos(medicosFormatados);
       } catch (error) {
-        console.error('Erro ao buscar filiais:', error);
+        console.error('Erro ao buscar dados:', error);
       } finally {
         setCarregandoFiliais(false);
       }
     };
 
-    buscarFiliais();
+    buscarDados();
   }, []);
   
   // Efeito para buscar os dados de custos_os quando o mapa de filiais estiver pronto
@@ -179,7 +196,14 @@ const RelatorioOS: React.FC = () => {
         dataFinal: filtros.dataFinal || undefined
       };
       
-      const doc = relatorioService.gerarRelatorioOS(osFiltradas, filtrosRelatorio);
+      // Adicionar os campos nomeMedico e numeroTco aos dados
+      const osComDadosCompletos = osFiltradas.map(os => ({
+        ...os,
+        nomeMedico: getNomeMedico(os.medico_id),
+        numeroTco: os.numero_tco
+      }));
+      
+      const doc = relatorioService.gerarRelatorioOS(osComDadosCompletos, filtrosRelatorio);
       
       const nomeArquivo = `relatorio-os-${new Date().toISOString().slice(0, 10)}.pdf`;
       relatorioService.salvar(nomeArquivo);
@@ -201,6 +225,12 @@ const RelatorioOS: React.FC = () => {
 
   const handleCloseAlert = () => {
     setAlert({ ...alert, open: false });
+  };
+
+  const getNomeMedico = (medicoId?: number) => {
+    if (!medicoId) return 'Não informado';
+    const medico = medicos.find(m => m.id === medicoId);
+    return medico ? medico.nome : 'Médico não encontrado';
   };
 
   return (
@@ -279,7 +309,14 @@ const RelatorioOS: React.FC = () => {
                 <ListItem key={os.id} divider>
                   <ListItemText
                     primary={`${os.filial} - ${formatDateToBrazilian(os.data)}`}
-                    secondary={`Venda: R$ ${os.valorVenda.toFixed(2)} | Lentes: R$ ${os.custoLentes.toFixed(2)} | Armação: R$ ${os.custoArmacoes.toFixed(2)} | MKT: R$ ${os.custoMkt.toFixed(2)} | Outros: R$ ${os.outrosCustos.toFixed(2)}`}
+                    secondary={
+                      <>
+                        <div>{`Venda: R$ ${os.valorVenda.toFixed(2)} | Lentes: R$ ${os.custoLentes.toFixed(2)} | Armação: R$ ${os.custoArmacoes.toFixed(2)} | MKT: R$ ${os.custoMkt.toFixed(2)} | Outros: R$ ${os.outrosCustos.toFixed(2)}`}</div>
+                        <div style={{ marginTop: '4px', fontSize: '0.875rem', color: '#666' }}>
+                          {`Médico: ${getNomeMedico(os.medico_id)}${os.numero_tco ? ` | TCO: ${os.numero_tco}` : ''}`}
+                        </div>
+                      </>
+                    }
                   />
                 </ListItem>
               ))}
@@ -304,4 +341,4 @@ const RelatorioOS: React.FC = () => {
   );
 };
 
-export default RelatorioOS; 
+export default RelatorioOS;

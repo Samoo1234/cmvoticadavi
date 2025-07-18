@@ -8,3 +8,4 @@ export { custoOSService } from './custoOSService';
 export { despesasService } from './despesasService';
 export { despesasFixasService } from './despesasFixasService';
 export { despesasDiversasService } from './despesasDiversasService';
+export { medicosService } from './medicosService';

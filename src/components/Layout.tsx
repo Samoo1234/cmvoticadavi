@@ -15,6 +15,7 @@ import PaymentsIcon from '@mui/icons-material/Payments';
 import DescriptionIcon from '@mui/icons-material/Description';
 import LabelIcon from '@mui/icons-material/Label';
 import PeopleIcon from '@mui/icons-material/People';
+import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import TrocarSenhaModal from './TrocarSenhaModal';
@@ -25,6 +26,7 @@ const getMenuItems = (isAdmin: boolean, usuario: any, hasPermission: any) => {
   const allItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/', rota: 'dashboard' },
     { text: 'Filiais', icon: <StoreIcon />, path: '/filiais', rota: 'filiais' },
+    { text: 'Médicos', icon: <LocalHospitalIcon />, path: '/medicos', rota: 'medicos' },
     { text: 'Tipos de Fornecedores', icon: <CategoryIcon />, path: '/tipos-fornecedores', rota: 'tipos-fornecedores' },
     { text: 'Fornecedores', icon: <BusinessIcon />, path: '/fornecedores', rota: 'fornecedores' },
     { text: 'Títulos', icon: <ReceiptIcon />, path: '/titulos', rota: 'titulos' },
@@ -193,4 +195,4 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   );
 };
 
-export default Layout; 
+export default Layout;

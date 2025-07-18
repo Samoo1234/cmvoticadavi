@@ -16,6 +16,7 @@ import DespesasDiversas from '../pages/DespesasDiversas';
 import ExtratoDespesas from '../pages/ExtratoDespesas';
 import CategoriasDespesas from '../pages/CategoriasDespesas';
 import GerenciarUsuarios from '../pages/GerenciarUsuarios';
+import Medicos from '../pages/Medicos';
 import { useAuth } from '../contexts/AuthContext';
 
 // Componente para proteger rotas que precisam de permissão específica
@@ -126,6 +127,14 @@ const AppContent: React.FC = () => {
         <Route path="/" element={<Dashboard />} />
         
         {/* Rotas com controle de permissão */}
+        <Route 
+          path="/medicos" 
+          element={
+            <ProtectedRoute requiredPermission="medicos">
+              <Medicos />
+            </ProtectedRoute>
+          } 
+        />
         <Route 
           path="/tipos-fornecedores" 
           element={

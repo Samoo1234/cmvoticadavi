@@ -29,7 +29,7 @@ export class RelatoriosPDFService {
   private lineHeight: number;
 
   constructor() {
-    this.doc = new jsPDF();
+    this.doc = new jsPDF('landscape');
     this.pageHeight = this.doc.internal.pageSize.height;
     this.pageWidth = this.doc.internal.pageSize.width;
     this.currentY = 20;
@@ -511,12 +511,14 @@ export class RelatoriosPDFService {
     this.currentY += 10;
     
     // Tabela de OS
-    const headers = ['Data', 'Filial', 'Venda', 'Lentes', 'Armações', 'MKT', 'Outros', 'Margem'];
+    const headers = ['Data', 'Filial', 'Médico', 'TCO', 'Venda', 'Lentes', 'Armações', 'MKT', 'Outros', 'Margem'];
     const rows = osList.map(os => {
       const margem = os.valorVenda - (os.custoLentes + os.custoArmacoes + os.custoMkt + os.outrosCustos);
       return [
         formatDateToBrazilian(os.data),
         os.filial,
+        os.nomeMedico || '-',
+        os.numeroTco || '-',
         `R$ ${os.valorVenda.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
         `R$ ${os.custoLentes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
         `R$ ${os.custoArmacoes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
@@ -526,7 +528,7 @@ export class RelatoriosPDFService {
       ];
     });
     
-    this.createTable(headers, rows, [20, 30, 22, 20, 22, 18, 18, 22]);
+    this.createTable(headers, rows, [20, 30, 35, 20, 25, 22, 25, 20, 20, 25]);
     
     // Linha de totais
     this.checkNewPage(15);
@@ -536,12 +538,12 @@ export class RelatoriosPDFService {
     this.doc.setFontSize(9);
     this.doc.setFont('helvetica', 'bold');
     this.doc.text('TOTAIS:', this.margin + 2, this.currentY + 5);
-    this.doc.text(`R$ ${totalVendas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 52, this.currentY + 5);
-    this.doc.text(`R$ ${totalLentes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 74, this.currentY + 5);
-    this.doc.text(`R$ ${totalArmacoes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 96, this.currentY + 5);
-    this.doc.text(`R$ ${totalMkt.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 114, this.currentY + 5);
-    this.doc.text(`R$ ${totalOutros.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 132, this.currentY + 5);
-    this.doc.text(`R$ ${margemBruta.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 154, this.currentY + 5);
+    this.doc.text(`R$ ${totalVendas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 125, this.currentY + 5);
+    this.doc.text(`R$ ${totalLentes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 150, this.currentY + 5);
+    this.doc.text(`R$ ${totalArmacoes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 172, this.currentY + 5);
+    this.doc.text(`R$ ${totalMkt.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 197, this.currentY + 5);
+    this.doc.text(`R$ ${totalOutros.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 217, this.currentY + 5);
+    this.doc.text(`R$ ${margemBruta.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 237, this.currentY + 5);
     
     this.currentY += 15;
     
@@ -555,4 +557,4 @@ export class RelatoriosPDFService {
   }
 }
 
-export const relatoriosPDFService = new RelatoriosPDFService(); 
+export const relatoriosPDFService = new RelatoriosPDFService();

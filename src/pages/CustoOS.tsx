@@ -20,6 +20,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { custoOSService } from '../services';
 import { filiaisService } from '../services';
+import { medicosService } from '../services';
 import { formatDateToBrazilian } from '../utils/dateUtils';
 // Importando a interface CustoOS diretamente do arquivo de serviço
 interface CustoOS {
@@ -31,6 +32,8 @@ interface CustoOS {
   custo_armacoes: number;
   custo_mkt: number;
   outros_custos: number;
+  medico_id?: number;
+  numero_tco?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -45,6 +48,9 @@ interface FormCustoOS {
   custoArmacoes: string;
   custoMkt: string;
   outrosCustos: string;
+  medico: string;
+  medico_id?: number;
+  numeroTco: string;
 }
 
 const CustoOS: React.FC = () => {
@@ -52,6 +58,7 @@ const CustoOS: React.FC = () => {
   const [form, setForm] = useState<Partial<FormCustoOS>>({});
   const [editId, setEditId] = useState<number | null>(null);
   const [filiais, setFiliais] = useState<{id: number, nome: string}[]>([]);
+  const [medicos, setMedicos] = useState<{id: number, nome: string}[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [alert, setAlert] = useState<{open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning'}>({ 
     open: false, 
@@ -63,8 +70,9 @@ const CustoOS: React.FC = () => {
     const carregarDados = async () => {
       setIsLoading(true);
       try {
-        const [dadosFiliais, dadosCustosOS] = await Promise.all([
+        const [dadosFiliais, dadosMedicos, dadosCustosOS] = await Promise.all([
           filiaisService.getAll(),
+          medicosService.getAll(),
           custoOSService.getAll()
         ]);
 
@@ -73,6 +81,12 @@ const CustoOS: React.FC = () => {
           nome: f.nome
         }));
         setFiliais(filiaisFormatadas);
+
+        const medicosFormatados = dadosMedicos.map((m: any) => ({
+          id: m.id!,
+          nome: m.nome
+        }));
+        setMedicos(medicosFormatados);
 
         setOsList(dadosCustosOS);
       } catch (error) {
@@ -100,6 +114,13 @@ const CustoOS: React.FC = () => {
       } else {
         setForm({ ...form, [name]: value });
       }
+    } else if (name === 'medico') {
+      const medicoSelecionado = medicos.find(m => m.nome === value);
+      if (medicoSelecionado) {
+        setForm({ ...form, [name]: value, medico_id: medicoSelecionado.id });
+      } else {
+        setForm({ ...form, [name]: value });
+      }
     } else {
       setForm({ ...form, [name]: value });
     }
@@ -124,7 +145,9 @@ const CustoOS: React.FC = () => {
         custo_lentes: parseFloat(form.custoLentes || '0'),
         custo_armacoes: parseFloat(form.custoArmacoes || '0'),
         custo_mkt: parseFloat(form.custoMkt || '0'),
-        outros_custos: parseFloat(form.outrosCustos || '0')
+        outros_custos: parseFloat(form.outrosCustos || '0'),
+        medico_id: form.medico_id || undefined,
+        numero_tco: form.numeroTco || undefined
       };
 
       let resultado: CustoOS | null;
@@ -169,6 +192,7 @@ const CustoOS: React.FC = () => {
     const os = osList.find(o => o.id === id);
     if (os) {
       const filial = filiais.find(f => f.id === os.filial_id);
+      const medico = medicos.find(m => m.id === os.medico_id);
       
       const formData: FormCustoOS = {
         id: os.id,
@@ -179,7 +203,10 @@ const CustoOS: React.FC = () => {
         custoLentes: os.custo_lentes.toString(),
         custoArmacoes: os.custo_armacoes.toString(),
         custoMkt: os.custo_mkt.toString(),
-        outrosCustos: os.outros_custos.toString()
+        outrosCustos: os.outros_custos.toString(),
+        medico: medico?.nome || '',
+        medico_id: os.medico_id,
+        numeroTco: os.numero_tco || ''
       };
       
       setForm(formData);
@@ -236,6 +263,12 @@ const CustoOS: React.FC = () => {
   const getNomeFilial = (filialId: number) => {
     const filial = filiais.find(f => f.id === filialId);
     return filial ? filial.nome : 'Filial não encontrada';
+  };
+
+  const getNomeMedico = (medicoId?: number) => {
+    if (!medicoId) return 'Não informado';
+    const medico = medicos.find(m => m.id === medicoId);
+    return medico ? medico.nome : 'Médico não encontrado';
   };
 
   return (
@@ -352,6 +385,36 @@ const CustoOS: React.FC = () => {
                   type="number"
                   inputProps={{ min: 0, step: 0.01 }}
                 />
+                <TextField
+                  select
+                  label="Médico"
+                  name="medico"
+                  value={form.medico || ''}
+                  onChange={handleChange}
+                  fullWidth
+                  disabled={isLoading || medicos.length === 0}
+                >
+                  <MenuItem value="">
+                    <em>Selecione um médico</em>
+                  </MenuItem>
+                  {medicos.length === 0 ? (
+                    <MenuItem disabled>Carregando médicos...</MenuItem>
+                  ) : (
+                    medicos.map(medico => (
+                      <MenuItem key={medico.id} value={medico.nome}>
+                        {medico.nome}
+                      </MenuItem>
+                    ))
+                  )}
+                </TextField>
+                <TextField
+                  label="Nº TCO"
+                  name="numeroTco"
+                  value={form.numeroTco || ''}
+                  onChange={handleChange}
+                  fullWidth
+                  placeholder="Digite o número do TCO"
+                />
                 <Button variant="contained" color="primary" onClick={handleAddOrEdit} disabled={isLoading}>
                   {editId ? 'Salvar' : 'Adicionar'}
                 </Button>
@@ -373,7 +436,14 @@ const CustoOS: React.FC = () => {
                   <ListItem key={os.id} divider>
                     <ListItemText
                       primary={`${getNomeFilial(os.filial_id)} - ${formatarData(os.data)}`}
-                      secondary={`Venda: ${formatarMoeda(os.valor_venda)} | Lentes: ${formatarMoeda(os.custo_lentes)} | Armação: ${formatarMoeda(os.custo_armacoes)} | MKT: ${formatarMoeda(os.custo_mkt)} | Outros: ${formatarMoeda(os.outros_custos)}`}
+                      secondary={
+                        <>
+                          <div>{`Venda: ${formatarMoeda(os.valor_venda)} | Lentes: ${formatarMoeda(os.custo_lentes)} | Armação: ${formatarMoeda(os.custo_armacoes)} | MKT: ${formatarMoeda(os.custo_mkt)} | Outros: ${formatarMoeda(os.outros_custos)}`}</div>
+                          <div style={{ marginTop: '4px', fontSize: '0.875rem', color: '#666' }}>
+                            {`Médico: ${getNomeMedico(os.medico_id)}${os.numero_tco ? ` | TCO: ${os.numero_tco}` : ''}`}
+                          </div>
+                        </>
+                      }
                     />
                     <ListItemSecondaryAction>
                       <IconButton edge="end" aria-label="edit" onClick={() => handleEdit(os.id)} disabled={isLoading}>

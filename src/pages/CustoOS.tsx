@@ -104,25 +104,19 @@ const CustoOS: React.FC = () => {
     carregarDados();
   }, []);
 
+  const arredondarDuasCasas = (valor: string | number) => {
+    const num = typeof valor === 'string' ? parseFloat(valor.replace(',', '.')) : valor;
+    if (isNaN(num)) return '';
+    return (Math.round(num * 100) / 100).toFixed(2);
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    
-    if (name === 'filial') {
-      const filialSelecionada = filiais.find(f => f.nome === value);
-      if (filialSelecionada) {
-        setForm({ ...form, [name]: value, filial_id: filialSelecionada.id });
-      } else {
-        setForm({ ...form, [name]: value });
-      }
-    } else if (name === 'medico') {
-      const medicoSelecionado = medicos.find(m => m.nome === value);
-      if (medicoSelecionado) {
-        setForm({ ...form, [name]: value, medico_id: medicoSelecionado.id });
-      } else {
-        setForm({ ...form, [name]: value });
-      }
+    const camposMonetarios = ['valorVenda', 'custoLentes', 'custoArmacoes', 'custoMkt', 'outrosCustos'];
+    if (camposMonetarios.includes(e.target.name)) {
+      let valor = e.target.value.replace(',', '.');
+      if (/^\d*(\.\d{0,2})?$/.test(valor)) setForm({ ...form, [e.target.name]: valor });
     } else {
-      setForm({ ...form, [name]: value });
+      setForm({ ...form, [e.target.name]: e.target.value });
     }
   };
 
@@ -141,11 +135,11 @@ const CustoOS: React.FC = () => {
       const custoOSData = {
         filial_id: form.filial_id!,
         data: form.data,
-        valor_venda: parseFloat(form.valorVenda || '0'),
-        custo_lentes: parseFloat(form.custoLentes || '0'),
-        custo_armacoes: parseFloat(form.custoArmacoes || '0'),
-        custo_mkt: parseFloat(form.custoMkt || '0'),
-        outros_custos: parseFloat(form.outrosCustos || '0'),
+        valor_venda: parseFloat(arredondarDuasCasas(form.valorVenda || '0')),
+        custo_lentes: parseFloat(arredondarDuasCasas(form.custoLentes || '0')),
+        custo_armacoes: parseFloat(arredondarDuasCasas(form.custoArmacoes || '0')),
+        custo_mkt: parseFloat(arredondarDuasCasas(form.custoMkt || '0')),
+        outros_custos: parseFloat(arredondarDuasCasas(form.outrosCustos || '0')),
         medico_id: form.medico_id || undefined,
         numero_tco: form.numeroTco || undefined
       };

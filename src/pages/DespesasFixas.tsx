@@ -102,6 +102,17 @@ export default function DespesasFixas() {
     return labels[periodicidade as keyof typeof labels] || periodicidade;
   };
 
+  const arredondarDuasCasas = (valor: string | number) => {
+    const num = typeof valor === 'string' ? parseFloat(valor.replace(',', '.')) : valor;
+    if (isNaN(num)) return '';
+    return (Math.round(num * 100) / 100).toFixed(2);
+  };
+
+  const handleValorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let valor = e.target.value.replace(',', '.');
+    if (/^\d*(\.\d{0,2})?$/.test(valor)) setFormData({ ...formData, valor });
+  };
+
   const handleOpenDialog = (despesa?: DespesaFixaCompleta) => {
     if (despesa) {
       setEditingId(despesa.id);
@@ -160,7 +171,7 @@ export default function DespesasFixas() {
         filial_id: parseInt(formData.filial_id),
         categoria_id: formData.categoria_id ? parseInt(formData.categoria_id) : undefined,
         nome: formData.nome.trim(),
-        valor: parseFloat(formData.valor),
+        valor: parseFloat(arredondarDuasCasas(formData.valor)),
         periodicidade: formData.periodicidade,
         dia_vencimento: parseInt(formData.dia_vencimento),
         observacao: formData.observacao.trim() || undefined,
@@ -417,7 +428,7 @@ export default function DespesasFixas() {
                 label="Valor"
                 type="number"
                 value={formData.valor === '0' ? '' : formData.valor}
-                onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
+                onChange={handleValorChange}
                 fullWidth
                 required
                 inputProps={{ step: '0.01', min: '0' }}

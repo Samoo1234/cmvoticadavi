@@ -138,6 +138,17 @@ export default function DespesasDiversas() {
     return date.toLocaleDateString('pt-BR');
   };
 
+  const arredondarDuasCasas = (valor: string | number) => {
+    const num = typeof valor === 'string' ? parseFloat(valor.replace(',', '.')) : valor;
+    if (isNaN(num)) return '';
+    return (Math.round(num * 100) / 100).toFixed(2);
+  };
+
+  const handleValorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let valor = e.target.value.replace(',', '.');
+    if (/^\d*(\.\d{0,2})?$/.test(valor)) setFormData({ ...formData, valor });
+  };
+
   const handleOpenDialog = (despesa?: DespesaDiversaCompleta) => {
     // Verificar permissão antes de abrir o diálogo
     if (despesa && !canEdit) {
@@ -205,7 +216,7 @@ export default function DespesasDiversas() {
         filial_id: parseInt(formData.filial_id),
         categoria_id: formData.categoria_id ? parseInt(formData.categoria_id) : undefined,
         nome: 'Despesa Diversa',
-        valor: parseFloat(formData.valor),
+        valor: parseFloat(arredondarDuasCasas(formData.valor)),
         data_despesa: formData.data_despesa,
         status: 'pendente' as const
       };
@@ -570,7 +581,7 @@ export default function DespesasDiversas() {
               label="Valor"
               type="number"
               value={formData.valor === '0' ? '' : formData.valor}
-              onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
+              onChange={handleValorChange}
               fullWidth
               required
               inputProps={{ step: '0.01', min: '0' }}

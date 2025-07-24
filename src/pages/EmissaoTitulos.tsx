@@ -154,7 +154,7 @@ const EmissaoTitulos: React.FC = () => {
           data_emissao: titulo.data_emissao,
           pagamento: titulo.data_pagamento || '',
           data_pagamento: titulo.data_pagamento,
-          valor: titulo.valor.toString(),
+          valor: (titulo.valor !== undefined && titulo.valor !== null && titulo.valor !== '' && !isNaN(Number(titulo.valor))) ? titulo.valor.toString() : '0.00',
           status: titulo.status,
           observacao: titulo.observacao,
           multa: titulo.multa,
@@ -301,6 +301,22 @@ const EmissaoTitulos: React.FC = () => {
     setModalEdicao(true);
   };
 
+  const arredondarDuasCasas = (valor: string | number) => {
+    const num = typeof valor === 'string' ? parseFloat(valor.replace(',', '.')) : valor;
+    if (isNaN(num)) return '';
+    return (Math.round(num * 100) / 100).toFixed(2);
+  };
+
+  // Substituir setMulta e setJuros para aceitar apenas até duas casas decimais
+  const handleMultaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let valor = e.target.value.replace(',', '.');
+    if (/^\d*(\.\d{0,2})?$/.test(valor)) setMulta(valor);
+  };
+  const handleJurosChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let valor = e.target.value.replace(',', '.');
+    if (/^\d*(\.\d{0,2})?$/.test(valor)) setJuros(valor);
+  };
+
   // Função para finalizar o pagamento normal (sem multa/juros)
   const handleFinalizarPagamento = async () => {
     if (tituloSelecionado === null) return;
@@ -396,8 +412,8 @@ const EmissaoTitulos: React.FC = () => {
       setIsLoading(true);
       console.log('Processando pagamento com multa/juros para título ID:', tituloSelecionado);
       
-      const multaValor = parseFloat(multa) || 0;
-      const jurosValor = parseFloat(juros) || 0;
+      const multaValor = parseFloat(arredondarDuasCasas(multa)) || 0;
+      const jurosValor = parseFloat(arredondarDuasCasas(juros)) || 0;
       
       // Buscar o título selecionado
       const tituloAtual = titulos.find(t => t.id === tituloSelecionado);
@@ -492,8 +508,8 @@ const EmissaoTitulos: React.FC = () => {
       setIsLoading(true);
       console.log('Processando edição para título ID:', tituloEdicao.id);
       
-      const multaValor = parseFloat(multa) || 0;
-      const jurosValor = parseFloat(juros) || 0;
+      const multaValor = parseFloat(arredondarDuasCasas(multa)) || 0;
+      const jurosValor = parseFloat(arredondarDuasCasas(juros)) || 0;
       
       // Preparar dados para atualização
       const dadosAtualizacao = {
@@ -688,7 +704,7 @@ const EmissaoTitulos: React.FC = () => {
               type="number"
               fullWidth
               value={multa}
-              onChange={(e) => setMulta(e.target.value)}
+              onChange={handleMultaChange}
               InputProps={{
                 startAdornment: <InputAdornment position="start">R$</InputAdornment>,
                 inputProps: { step: '0.01', min: '0' }
@@ -700,7 +716,7 @@ const EmissaoTitulos: React.FC = () => {
               type="number"
               fullWidth
               value={juros}
-              onChange={(e) => setJuros(e.target.value)}
+              onChange={handleJurosChange}
               InputProps={{
                 startAdornment: <InputAdornment position="start">R$</InputAdornment>,
                 inputProps: { step: '0.01', min: '0' }
@@ -771,7 +787,7 @@ const EmissaoTitulos: React.FC = () => {
               type="number"
               fullWidth
               value={multa}
-              onChange={(e) => setMulta(e.target.value)}
+              onChange={handleMultaChange}
               InputProps={{
                 startAdornment: <InputAdornment position="start">R$</InputAdornment>,
                 inputProps: { step: '0.01', min: '0' }
@@ -783,7 +799,7 @@ const EmissaoTitulos: React.FC = () => {
               type="number"
               fullWidth
               value={juros}
-              onChange={(e) => setJuros(e.target.value)}
+              onChange={handleJurosChange}
               InputProps={{
                 startAdornment: <InputAdornment position="start">R$</InputAdornment>,
                 inputProps: { step: '0.01', min: '0' }

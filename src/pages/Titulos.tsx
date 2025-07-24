@@ -61,6 +61,12 @@ interface TituloCompleto extends Omit<Titulo, 'valor' | 'fornecedor_id' | 'filia
   observacao?: string;
 }
 
+const arredondarDuasCasas = (valor: string | number) => {
+  const num = typeof valor === 'string' ? parseFloat(valor.replace(',', '.')) : valor;
+  if (isNaN(num)) return '';
+  return (Math.round(num * 100) / 100).toFixed(2);
+};
+
 const Titulos: React.FC = () => {
   const [titulos, setTitulos] = useState<TituloCompleto[]>([]);
   const [filiais, setFiliais] = useState<{id: number, nome: string}[]>([]);
@@ -147,7 +153,15 @@ const Titulos: React.FC = () => {
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    if (e.target.name === 'valor') {
+      // Permite apenas até duas casas decimais
+      let valor = e.target.value.replace(',', '.');
+      if (/^\d*(\.\d{0,2})?$/.test(valor)) {
+        setForm({ ...form, [e.target.name]: valor });
+      }
+    } else {
+      setForm({ ...form, [e.target.name]: e.target.value });
+    }
   };
 
   // Atualiza a quantidade de títulos
@@ -166,8 +180,17 @@ const Titulos: React.FC = () => {
   // Atualiza os valores dos itens de títulos
   const handleItemTituloChange = (index: number, campo: keyof TituloItem, valor: string) => {
     const novoItens = [...itensTitulos];
-    novoItens[index] = { ...novoItens[index], [campo]: valor };
-    setItensTitulos(novoItens);
+    if (campo === 'valor') {
+      // Permite apenas até duas casas decimais
+      let v = valor.replace(',', '.');
+      if (/^\d*(\.\d{0,2})?$/.test(v)) {
+        novoItens[index] = { ...novoItens[index], [campo]: v };
+        setItensTitulos(novoItens);
+      }
+    } else {
+      novoItens[index] = { ...novoItens[index], [campo]: valor };
+      setItensTitulos(novoItens);
+    }
   };
 
   const handleAddOrEdit = async () => {
@@ -203,6 +226,10 @@ const Titulos: React.FC = () => {
         });
         return;
       }
+      // Arredondar todos os valores para duas casas
+      itensTitulos.forEach((item, idx) => {
+        itensTitulos[idx].valor = arredondarDuasCasas(item.valor);
+      });
     }
     if (!form.filial || !form.fornecedor || !form.vencimento || !form.valor || isNaN(parseFloat(form.valor))) {
       setAlert({
@@ -212,6 +239,8 @@ const Titulos: React.FC = () => {
       });
       return;
     }
+    // Arredondar valor individual
+    form.valor = arredondarDuasCasas(form.valor || '');
 
     setIsLoading(true);
     try {
@@ -302,6 +331,9 @@ const Titulos: React.FC = () => {
           const titulosCriados: Titulo[] = [];
           
           for (const item of itensTitulos) {
+            // Garantir valor válido
+            let valorSeguro = item.valor;
+            if (!valorSeguro || isNaN(Number(valorSeguro))) valorSeguro = '0.00';
             // Gerar próximo número sequencial para cada título
             const numeroTitulo = await titulosService.getProximoNumero();
             
@@ -312,7 +344,7 @@ const Titulos: React.FC = () => {
               tipo: fornecedorObj.tipo, // Incluir o tipo do fornecedor
               data_emissao: new Date().toISOString().split('T')[0],
               data_vencimento: item.vencimento,
-              valor: parseFloat(item.valor),
+              valor: parseFloat(valorSeguro),
               status: 'pendente',
               observacao: form.observacoes || ''
             };

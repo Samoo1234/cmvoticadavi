@@ -401,13 +401,13 @@ export class RelatoriosPDFService {
     this.doc.setFontSize(9);
     this.doc.text(`Total de Títulos: ${totalTitulos}`, this.margin + 5, this.currentY);
     this.currentY += this.lineHeight;
-    this.doc.text(`Títulos Pagos: ${titulosPagos.length} (R$ ${valorPago.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`, this.margin + 5, this.currentY);
+    this.doc.text(`Títulos Pagos: ${titulosPagos.length} (${formatarDinheiro(valorPago)})`, this.margin + 5, this.currentY);
     this.currentY += this.lineHeight;
-    this.doc.text(`Títulos Pendentes: ${titulosPendentes.length} (R$ ${valorPendente.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`, this.margin + 5, this.currentY);
+    this.doc.text(`Títulos Pendentes: ${titulosPendentes.length} (${formatarDinheiro(valorPendente)})`, this.margin + 5, this.currentY);
     this.currentY += this.lineHeight;
     
     this.doc.setFont('helvetica', 'bold');
-    this.doc.text(`VALOR TOTAL: R$ ${valorFinalTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 5, this.currentY);
+    this.doc.text(`VALOR TOTAL: ${formatarDinheiro(valorFinalTotal)}`, this.margin + 5, this.currentY);
     this.currentY += 10;
     
     // Tabela de títulos
@@ -418,14 +418,15 @@ export class RelatoriosPDFService {
       t.fornecedor,
       t.filial,
       t.vencimento ? formatDateToBrazilian(t.vencimento) : '-',
-      `R$ ${parseFloat(t.valor.toString()).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-      `R$ ${(t.multa ? parseFloat(t.multa.toString()) : 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-      `R$ ${(t.juros ? parseFloat(t.juros.toString()) : 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-      `R$ ${(parseFloat(t.valor.toString()) + (t.multa ? parseFloat(t.multa.toString()) : 0) + (t.juros ? parseFloat(t.juros.toString()) : 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+      formatarDinheiro(t.valor),
+      formatarDinheiro(t.multa),
+      formatarDinheiro(t.juros),
+      formatarDinheiro(parseFloat(t.valor?.toString() || '0') + (t.multa ? parseFloat(t.multa.toString()) : 0) + (t.juros ? parseFloat(t.juros.toString()) : 0)),
       t.status === 'pago' ? 'Pago' : t.status === 'pendente' ? 'Pendente' : t.status
     ]);
     
-    this.createTable(headers, rows, [15, 20, 25, 20, 20, 18, 15, 15, 18, 15]);
+    // Ajustar os tamanhos das colunas para valores grandes, número do título e status
+    this.createTable(headers, rows, [22, 20, 25, 20, 22, 28, 22, 22, 28, 22]);
     
     // Linha de totais
     this.checkNewPage(15);
@@ -435,10 +436,10 @@ export class RelatoriosPDFService {
     this.doc.setFontSize(9);
     this.doc.setFont('helvetica', 'bold');
     this.doc.text('TOTAIS:', this.margin + 2, this.currentY + 5);
-    this.doc.text(`R$ ${valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 100, this.currentY + 5);
-    this.doc.text(`R$ ${multaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 125, this.currentY + 5);
-    this.doc.text(`R$ ${jurosTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 145, this.currentY + 5);
-    this.doc.text(`R$ ${valorFinalTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, this.margin + 165, this.currentY + 5);
+    this.doc.text(`R$ ${formatarDinheiro(valorTotal)}`, this.margin + 125, this.currentY + 5);
+    this.doc.text(`R$ ${formatarDinheiro(multaTotal)}`, this.margin + 150, this.currentY + 5);
+    this.doc.text(`R$ ${formatarDinheiro(jurosTotal)}`, this.margin + 172, this.currentY + 5);
+    this.doc.text(`R$ ${formatarDinheiro(valorFinalTotal)}`, this.margin + 197, this.currentY + 5);
     
     this.currentY += 15;
     
@@ -555,6 +556,13 @@ export class RelatoriosPDFService {
   public visualizar() {
     window.open(this.doc.output('bloburl'), '_blank');
   }
+}
+
+// Função utilitária para arredondar e formatar valores monetários
+function formatarDinheiro(valor: any) {
+  const num = typeof valor === 'string' ? parseFloat(valor.replace(',', '.')) : Number(valor);
+  if (isNaN(num)) return 'R$ 0,00';
+  return 'R$ ' + (Math.round(num * 100) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export const relatoriosPDFService = new RelatoriosPDFService();

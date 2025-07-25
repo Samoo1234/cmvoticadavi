@@ -121,6 +121,15 @@ const CustoOS: React.FC = () => {
   };
 
   const handleAddOrEdit = async () => {
+    if (!form.filial_id) {
+      setAlert({
+        open: true,
+        message: 'Selecione uma filial!',
+        severity: 'warning'
+      });
+      return;
+    }
+    console.log('Formulário enviado:', form); // Debug: conferir filial_id
     if (!form.filial || !form.data || !form.valorVenda) {
       setAlert({
         open: true,
@@ -308,9 +317,13 @@ const CustoOS: React.FC = () => {
                 <TextField
                   select
                   label="Filial"
-                  name="filial"
-                  value={form.filial || ''}
-                  onChange={handleChange}
+                  name="filial_id"
+                  value={form.filial_id || ''}
+                  onChange={e => setForm({
+                    ...form,
+                    filial_id: Number(e.target.value),
+                    filial: filiais.find(f => f.id === Number(e.target.value))?.nome || ''
+                  })}
                   fullWidth
                   disabled={isLoading || filiais.length === 0}
                 >
@@ -318,7 +331,7 @@ const CustoOS: React.FC = () => {
                     <MenuItem disabled>Carregando filiais...</MenuItem>
                   ) : (
                     filiais.map(filial => (
-                      <MenuItem key={filial.id} value={filial.nome}>
+                      <MenuItem key={filial.id} value={filial.id}>
                         {filial.nome}
                       </MenuItem>
                     ))
@@ -382,9 +395,13 @@ const CustoOS: React.FC = () => {
                 <TextField
                   select
                   label="Médico"
-                  name="medico"
-                  value={form.medico || ''}
-                  onChange={handleChange}
+                  name="medico_id"
+                  value={form.medico_id || ''}
+                  onChange={e => setForm({
+                    ...form,
+                    medico_id: Number(e.target.value),
+                    medico: medicos.find(m => m.id === Number(e.target.value))?.nome || ''
+                  })}
                   fullWidth
                   disabled={isLoading || medicos.length === 0}
                 >
@@ -395,7 +412,7 @@ const CustoOS: React.FC = () => {
                     <MenuItem disabled>Carregando médicos...</MenuItem>
                   ) : (
                     medicos.map(medico => (
-                      <MenuItem key={medico.id} value={medico.nome}>
+                      <MenuItem key={medico.id} value={medico.id}>
                         {medico.nome}
                       </MenuItem>
                     ))
@@ -432,10 +449,10 @@ const CustoOS: React.FC = () => {
                       primary={`${getNomeFilial(os.filial_id)} - ${formatarData(os.data)}`}
                       secondary={
                         <>
-                          <div>{`Venda: ${formatarMoeda(os.valor_venda)} | Lentes: ${formatarMoeda(os.custo_lentes)} | Armação: ${formatarMoeda(os.custo_armacoes)} | MKT: ${formatarMoeda(os.custo_mkt)} | Outros: ${formatarMoeda(os.outros_custos)}`}</div>
-                          <div style={{ marginTop: '4px', fontSize: '0.875rem', color: '#666' }}>
+                          <span>{`Venda: ${formatarMoeda(os.valor_venda)} | Lentes: ${formatarMoeda(os.custo_lentes)} | Armação: ${formatarMoeda(os.custo_armacoes)} | MKT: ${formatarMoeda(os.custo_mkt)} | Outros: ${formatarMoeda(os.outros_custos)}`}</span>
+                          <span style={{ display: 'block', marginTop: 4, fontSize: '0.875rem', color: '#666' }}>
                             {`Médico: ${getNomeMedico(os.medico_id)}${os.numero_tco ? ` | TCO: ${os.numero_tco}` : ''}`}
-                          </div>
+                          </span>
                         </>
                       }
                     />
@@ -456,7 +473,6 @@ const CustoOS: React.FC = () => {
       </div>
     </Box>
   );
-};
+}
 
-// Exportando o componente como um valor real, não apenas como um tipo
-export default CustoOS as React.FC;
+export default CustoOS;

@@ -3,13 +3,14 @@ import { Card, CardContent, Typography, Box, CircularProgress } from '@mui/mater
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import ReceiptIcon from '@mui/icons-material/Receipt';
-import { osService, titulosService } from '../services';
+import { titulosService } from '../services';
+import { custoOSService } from '../services';
 
 const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState({
-    totalVendas: 0,
-    osAbertas: 0,
+    totalCustos: 0,
+    custosRecentes: 0,
     titulosVencer: 0
   });
 
@@ -18,21 +19,28 @@ const Dashboard: React.FC = () => {
       try {
         setLoading(true);
         
-        // Buscar OSs abertas
-        const osAbertas = await osService.getOSAbertas();
-        
         // Buscar títulos pendentes
         const titulosPendentes = await titulosService.getTitulosPendentes();
         
-        // Calcular total de vendas (soma dos valores das OSs concluídas)
-        const todasOS = await osService.getAll();
-        const totalVendas = todasOS
-          .filter(os => os.status === 'concluida' || os.status === 'entregue')
-          .reduce((total, os) => total + os.valor_total, 0);
+        // Buscar custos de OS
+        const custos = await custoOSService.getAll();
+        
+        // Calcular total de custos
+        const totalCustos = custos.reduce((total, custo) => {
+          return total + (custo.valor_venda || 0);
+        }, 0);
+        
+        // Contar custos recentes (últimos 30 dias)
+        const dataLimite = new Date();
+        dataLimite.setDate(dataLimite.getDate() - 30);
+        const custosRecentes = custos.filter(custo => {
+          const dataCusto = new Date(custo.data);
+          return dataCusto >= dataLimite;
+        }).length;
         
         setDashboardData({
-          totalVendas,
-          osAbertas: osAbertas.length,
+          totalCustos,
+          custosRecentes,
           titulosVencer: titulosPendentes.length
         });
       } catch (error) {
@@ -48,13 +56,13 @@ const Dashboard: React.FC = () => {
   const cards = [
     {
       title: 'Total de Vendas',
-      value: `R$ ${dashboardData.totalVendas.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `R$ ${dashboardData.totalCustos.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: <MonetizationOnIcon fontSize="large" color="primary" />,
       color: '#e3f2fd',
     },
     {
-      title: 'OS Abertas',
-      value: dashboardData.osAbertas.toString(),
+      title: 'Custos Recentes',
+      value: dashboardData.custosRecentes.toString(),
       icon: <AssignmentIcon fontSize="large" color="primary" />,
       color: '#f3e5f5',
     },

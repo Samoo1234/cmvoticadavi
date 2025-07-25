@@ -536,9 +536,12 @@ const EmissaoTitulos: React.FC = () => {
       const jurosValor = parseFloat(arredondarDuasCasas(juros)) || 0;
       
       // Preparar dados para atualização
+      const valorAtualizado = tituloEdicao.valor ? parseFloat(arredondarDuasCasas(tituloEdicao.valor)) : 0;
+      
       const dadosAtualizacao = {
         multa: multaValor,
-        juros: jurosValor
+        juros: jurosValor,
+        valor: valorAtualizado
       };
       
       console.log('Dados de atualização:', dadosAtualizacao);
@@ -548,13 +551,14 @@ const EmissaoTitulos: React.FC = () => {
       console.log('Resultado da atualização:', resultado);
       
       if (resultado) {
-        // Atualizar o estado local com os novos valores de multa e juros
+        // Atualizar o estado local com os novos valores de multa, juros e valor (se modificado)
         const novosTitulos = titulos.map(t => {
           if (t.id === tituloEdicao.id) {
             return {
               ...t,
               multa: multaValor,
-              juros: jurosValor
+              juros: jurosValor,
+              valor: valorAtualizado.toString() // Convertendo o valor numérico para string para manter o formato
             };
           }
           return t;
@@ -568,7 +572,8 @@ const EmissaoTitulos: React.FC = () => {
             return {
               ...t,
               multa: multaValor,
-              juros: jurosValor
+              juros: jurosValor,
+              valor: valorAtualizado.toString()
             };
           }
           return t;
@@ -796,10 +801,20 @@ const EmissaoTitulos: React.FC = () => {
             
             <TextField
               label="Valor Original"
-              value={tituloEdicao ? `R$ ${parseFloat(tituloEdicao.valor).toFixed(2)}` : ''}
-              InputProps={{ readOnly: true }}
+              value={tituloEdicao?.valor || ''}
+              onChange={(e) => {
+                // Permite apenas números e ponto decimal
+                const valor = e.target.value.replace(',', '.');
+                if (/^\d*(\.\d{0,2})?$/.test(valor)) {
+                  setTituloEdicao(prev => prev ? {...prev, valor: valor} : null);
+                }
+              }}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+              }}
               fullWidth
-              disabled
+              type="number"
+              inputProps={{ step: '0.01', min: '0' }}
             />
             
             <Typography variant="subtitle1" sx={{ mt: 1 }}>
@@ -966,11 +981,9 @@ const EmissaoTitulos: React.FC = () => {
                   <IconButton edge="end" aria-label="pagar" onClick={() => handlePagar(titulo.id)} disabled={titulo.status === 'pago'}>
                     <PaymentIcon />
                   </IconButton>
-                  {titulo.status === 'pago' && (
-                    <IconButton edge="end" aria-label="editar" onClick={() => handleEditar(titulo)}>
-                      <EditIcon />
-                    </IconButton>
-                  )}
+                  <IconButton edge="end" aria-label="editar" onClick={() => handleEditar(titulo)}>
+                    <EditIcon />
+                  </IconButton>
                   <IconButton edge="end" aria-label="delete" onClick={() => handleDelete(titulo.id)}>
                     <DeleteIcon />
                   </IconButton>

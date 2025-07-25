@@ -18,5 +18,5 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
   }
 });
 
-// Interceptor para logar todas as requisições
-supabase.realtime.setAuth(supabaseKey);
+// Configuração do Realtime do Supabase
+// Nota: A autenticação do Realtime deve ser configurada apenas nos componentes que precisam dela

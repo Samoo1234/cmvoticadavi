@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { formatDateToBrazilian } from '../utils/dateUtils';
+import { supabase } from '../services/supabase';
 import { 
   Box, 
   Typography, 
@@ -185,6 +186,24 @@ const EmissaoTitulos: React.FC = () => {
   // Carregar dados iniciais
   useEffect(() => {
     carregarDados();
+
+    // Configurar canal Realtime para a tabela titulos
+    const channel = supabase.channel('public:titulos')
+      .on('postgres_changes', 
+          { event: '*', schema: 'public', table: 'titulos' }, 
+          (payload) => {
+            console.log('Atualização em tempo real na tabela titulos:', payload);
+            // Recarregar dados quando houver uma mudança na tabela titulos
+            carregarDados();
+      })
+      .subscribe((status) => {
+        console.log('Status da subscrição Realtime:', status);
+      });
+    
+    // Limpeza da subscrição quando o componente for desmontado
+    return () => {
+      channel.unsubscribe();
+    };
   }, []);
 
   const handleFiltroChange = (e: React.ChangeEvent<HTMLInputElement>) => {

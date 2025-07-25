@@ -187,7 +187,12 @@ const EmissaoTitulos: React.FC = () => {
   useEffect(() => {
     carregarDados();
 
-    // Configurar canal Realtime para a tabela titulos
+    // Configurar canal Realtime para a tabela titulos com autenticação
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+    
+    // Aplicar autenticação ao Realtime
+    supabase.realtime.setAuth(supabaseKey);
+    
     const channel = supabase.channel('public:titulos')
       .on('postgres_changes', 
           { event: '*', schema: 'public', table: 'titulos' }, 

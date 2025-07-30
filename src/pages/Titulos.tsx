@@ -230,14 +230,26 @@ const Titulos: React.FC = () => {
       itensTitulos.forEach((item, idx) => {
         itensTitulos[idx].valor = arredondarDuasCasas(item.valor);
       });
-    }
-    if (!form.filial || !form.fornecedor || !form.vencimento || !form.valor || isNaN(parseFloat(form.valor))) {
-      setAlert({
-        open: true,
-        message: 'Preencha todos os campos obrigatórios.',
-        severity: 'warning'
-      });
-      return;
+      
+      // Para múltiplos títulos, validamos apenas a filial e fornecedor
+      if (!form.filial || !form.fornecedor) {
+        setAlert({
+          open: true,
+          message: 'Preencha filial e fornecedor para continuar.',
+          severity: 'warning'
+        });
+        return;
+      }
+    } else {
+      // Validação normal para título único
+      if (!form.filial || !form.fornecedor || !form.vencimento || !form.valor || isNaN(parseFloat(form.valor))) {
+        setAlert({
+          open: true,
+          message: 'Preencha todos os campos obrigatórios.',
+          severity: 'warning'
+        });
+        return;
+      }
     }
     // Arredondar valor individual
     form.valor = arredondarDuasCasas(form.valor || '');

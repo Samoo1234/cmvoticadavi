@@ -1,4 +1,6 @@
 import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import { parseDecimalSeguro, formatarDecimal, somarValores } from '../utils/decimalUtils';
 import type { DespesaFixaCompleta } from './despesasFixasService';
 import type { DespesaDiversaCompleta } from './despesasDiversasService';
 import { formatDateToBrazilian } from '../utils/dateUtils';
@@ -387,13 +389,18 @@ export class RelatoriosPDFService {
     const titulosPagos = titulos.filter(t => t.status === 'pago');
     const titulosPendentes = titulos.filter(t => t.status === 'pendente');
     
-    const valorTotal = titulos.reduce((acc, t) => acc + parseFloat(t.valor.toString()), 0);
-    const multaTotal = titulos.reduce((acc, t) => acc + (t.multa ? parseFloat(t.multa.toString()) : 0), 0);
-    const jurosTotal = titulos.reduce((acc, t) => acc + (t.juros ? parseFloat(t.juros.toString()) : 0), 0);
+    const valorTotal = titulos.reduce((acc, t) => somarValores(acc, t.valor.toString()), 0);
+    const multaTotal = titulos.reduce((acc, t) => somarValores(acc, t.multa ? t.multa.toString() : '0'), 0);
+    const jurosTotal = titulos.reduce((acc, t) => somarValores(acc, t.juros ? t.juros.toString() : '0'), 0);
     const valorFinalTotal = valorTotal + multaTotal + jurosTotal;
     
-    const valorPago = titulosPagos.reduce((acc, t) => acc + parseFloat(t.valor.toString()) + (t.multa ? parseFloat(t.multa.toString()) : 0) + (t.juros ? parseFloat(t.juros.toString()) : 0), 0);
-    const valorPendente = titulosPendentes.reduce((acc, t) => acc + parseFloat(t.valor.toString()), 0);
+    const valorPago = titulosPagos.reduce((acc, t) => {
+      const valor = parseDecimalSeguro(t.valor.toString());
+      const multa = t.multa ? parseDecimalSeguro(t.multa.toString()) : 0;
+      const juros = t.juros ? parseDecimalSeguro(t.juros.toString()) : 0;
+      return somarValores(acc, valor + multa + juros);
+    }, 0);
+    const valorPendente = titulosPendentes.reduce((acc, t) => somarValores(acc, t.valor.toString()), 0);
     
     this.addText('RESUMO FINANCEIRO:', this.margin, 10, 'bold');
     this.currentY += 2;
@@ -421,7 +428,7 @@ export class RelatoriosPDFService {
       formatarDinheiro(t.valor),
       formatarDinheiro(t.multa),
       formatarDinheiro(t.juros),
-      formatarDinheiro(parseFloat(t.valor?.toString() || '0') + (t.multa ? parseFloat(t.multa.toString()) : 0) + (t.juros ? parseFloat(t.juros.toString()) : 0)),
+      formatarDinheiro(somarValores(t.valor?.toString() || '0', t.multa ? t.multa.toString() : '0', t.juros ? t.juros.toString() : '0')),
       t.status === 'pago' ? 'Pago' : t.status === 'pendente' ? 'Pendente' : t.status
     ]);
     
@@ -560,9 +567,8 @@ export class RelatoriosPDFService {
 
 // Função utilitária para arredondar e formatar valores monetários
 function formatarDinheiro(valor: any) {
-  const num = typeof valor === 'string' ? parseFloat(valor.replace(',', '.')) : Number(valor);
-  if (isNaN(num)) return 'R$ 0,00';
-  return 'R$ ' + (Math.round(num * 100) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const num = parseDecimalSeguro(valor);
+  return 'R$ ' + formatarDecimal(num).replace('.', ',');
 }
 
 export const relatoriosPDFService = new RelatoriosPDFService();

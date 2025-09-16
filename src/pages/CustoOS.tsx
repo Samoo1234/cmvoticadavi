@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { parseDecimalSeguro, formatarDecimal, validarValorMonetario, arredondarDuasCasas } from '../utils/decimalUtils';
 import { 
   Box, 
   Typography, 
@@ -104,11 +105,7 @@ const CustoOS: React.FC = () => {
     carregarDados();
   }, []);
 
-  const arredondarDuasCasas = (valor: string | number) => {
-    const num = typeof valor === 'string' ? parseFloat(valor.replace(',', '.')) : valor;
-    if (isNaN(num)) return '';
-    return (Math.round(num * 100) / 100).toFixed(2);
-  };
+  // Função removida - agora usando arredondarDuasCasas do decimalUtils
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const camposMonetarios = ['valorVenda', 'custoLentes', 'custoArmacoes', 'custoMkt', 'outrosCustos'];
@@ -144,11 +141,11 @@ const CustoOS: React.FC = () => {
       const custoOSData = {
         filial_id: form.filial_id!,
         data: form.data,
-        valor_venda: parseFloat(arredondarDuasCasas(form.valorVenda || '0')),
-        custo_lentes: parseFloat(arredondarDuasCasas(form.custoLentes || '0')),
-        custo_armacoes: parseFloat(arredondarDuasCasas(form.custoArmacoes || '0')),
-        custo_mkt: parseFloat(arredondarDuasCasas(form.custoMkt || '0')),
-        outros_custos: parseFloat(arredondarDuasCasas(form.outrosCustos || '0')),
+        valor_venda: parseDecimalSeguro(arredondarDuasCasas(form.valorVenda || '0')),
+        custo_lentes: parseDecimalSeguro(arredondarDuasCasas(form.custoLentes || '0')),
+        custo_armacoes: parseDecimalSeguro(arredondarDuasCasas(form.custoArmacoes || '0')),
+        custo_mkt: parseDecimalSeguro(arredondarDuasCasas(form.custoMkt || '0')),
+        outros_custos: parseDecimalSeguro(arredondarDuasCasas(form.outrosCustos || '0')),
         medico_id: form.medico_id || undefined,
         numero_tco: form.numeroTco || undefined
       };

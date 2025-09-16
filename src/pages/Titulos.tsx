@@ -22,6 +22,7 @@ import { titulosService, type Titulo } from '../services/titulosService';
 import { filiaisService } from '../services/filiaisService';
 import { fornecedoresService } from '../services/fornecedoresService';
 import { useAuth } from '../contexts/AuthContext';
+import { parseDecimalSeguro, formatarDecimal, validarValorMonetario, arredondarDuasCasas } from '../utils/decimalUtils';
 
 // Função para formatar data no formato dd/mm/yyyy
 const formatarData = (data: string): string => {
@@ -61,11 +62,7 @@ interface TituloCompleto extends Omit<Titulo, 'valor' | 'fornecedor_id' | 'filia
   observacao?: string;
 }
 
-const arredondarDuasCasas = (valor: string | number) => {
-  const num = typeof valor === 'string' ? parseFloat(valor.replace(',', '.')) : valor;
-  if (isNaN(num)) return '';
-  return (Math.round(num * 100) / 100).toFixed(2);
-};
+// Função removida - agora usando arredondarDuasCasas do decimalUtils
 
 const Titulos: React.FC = () => {
   const [titulos, setTitulos] = useState<TituloCompleto[]>([]);
@@ -154,9 +151,11 @@ const Titulos: React.FC = () => {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.name === 'valor') {
-      // Permite apenas até duas casas decimais
+      // Validação mais rigorosa para valores monetários
       let valor = e.target.value.replace(',', '.');
-      if (/^\d*(\.\d{0,2})?$/.test(valor)) {
+      if (/^\d*(\.\d{0,2})?$/.test(valor) && validarValorMonetario(valor || '0')) {
+        setForm({ ...form, [e.target.name]: valor });
+      } else if (valor === '' || valor === '0') {
         setForm({ ...form, [e.target.name]: valor });
       }
     } else {
@@ -181,9 +180,9 @@ const Titulos: React.FC = () => {
   const handleItemTituloChange = (index: number, campo: keyof TituloItem, valor: string) => {
     const novoItens = [...itensTitulos];
     if (campo === 'valor') {
-      // Permite apenas até duas casas decimais
+      // Validação mais rigorosa para valores monetários
       let v = valor.replace(',', '.');
-      if (/^\d*(\.\d{0,2})?$/.test(v)) {
+      if (/^\d*(\.\d{0,2})?$/.test(v) && (validarValorMonetario(v) || v === '' || v === '0')) {
         novoItens[index] = { ...novoItens[index], [campo]: v };
         setItensTitulos(novoItens);
       }
@@ -242,10 +241,10 @@ const Titulos: React.FC = () => {
       }
     } else {
       // Validação normal para título único
-      if (!form.filial || !form.fornecedor || !form.vencimento || !form.valor || isNaN(parseFloat(form.valor))) {
+      if (!form.filial || !form.fornecedor || !form.vencimento || !form.valor || !validarValorMonetario(form.valor)) {
         setAlert({
           open: true,
-          message: 'Preencha todos os campos obrigatórios.',
+          message: 'Preencha todos os campos obrigatórios com valores válidos.',
           severity: 'warning'
         });
         return;
@@ -290,7 +289,7 @@ const Titulos: React.FC = () => {
         numero: proximoNumero,
         fornecedor_id: fornecedorSelecionado.id,
         filial_id: filialSelecionada.id,
-        valor: parseFloat(form.valor),
+        valor: parseDecimalSeguro(form.valor),
         data_emissao: new Date().toISOString(),
         data_vencimento: form.vencimento || '',
         status: 'pendente' as const,
@@ -345,7 +344,7 @@ const Titulos: React.FC = () => {
           for (const item of itensTitulos) {
             // Garantir valor válido
             let valorSeguro = item.valor;
-            if (!valorSeguro || isNaN(Number(valorSeguro))) valorSeguro = '0.00';
+            if (!valorSeguro || !validarValorMonetario(valorSeguro)) valorSeguro = '0.00';
             // Gerar próximo número sequencial para cada título
             const numeroTitulo = await titulosService.getProximoNumero();
             
@@ -356,7 +355,7 @@ const Titulos: React.FC = () => {
               tipo: fornecedorObj.tipo, // Incluir o tipo do fornecedor
               data_emissao: new Date().toISOString().split('T')[0],
               data_vencimento: item.vencimento,
-              valor: parseFloat(valorSeguro),
+              valor: parseDecimalSeguro(valorSeguro),
               status: 'pendente',
               observacao: form.observacoes || ''
             };
@@ -378,7 +377,7 @@ const Titulos: React.FC = () => {
               fornecedor: fornecedor?.nome || 'Fornecedor não encontrado',
               tipo: fornecedor?.tipo || 'Tipo não especificado',
               vencimento: titulo.data_vencimento || '',
-              valor: titulo.valor.toString(),
+              valor: formatarDecimal(titulo.valor),
               observacoes: titulo.observacao || ''
             };
           });
@@ -417,7 +416,7 @@ const Titulos: React.FC = () => {
             fornecedor: fornecedor?.nome || 'Fornecedor não encontrado',
             tipo: fornecedor?.tipo || 'Tipo não especificado',
             vencimento: novoTitulo.data_vencimento || '',
-            valor: novoTitulo.valor.toString(),
+            valor: formatarDecimal(novoTitulo.valor),
             observacoes: novoTitulo.observacao || ''
           };
           setTitulos([...titulos, novoTituloCompleto]);
@@ -749,7 +748,7 @@ const Titulos: React.FC = () => {
                   <ListItem key={titulo.id} divider>
                     <ListItemText
                       primary={`${titulo.filial} - ${titulo.fornecedor} (${titulo.tipo || 'Tipo não especificado'})`}
-                      secondary={`Vencimento: ${formatarData(titulo.vencimento)} | Valor: R$ ${titulo.valor} | Obs: ${titulo.observacoes}`}
+                      secondary={`Vencimento: ${formatarData(titulo.vencimento)} | Valor: R$ ${formatarDecimal(parseDecimalSeguro(titulo.valor))} | Obs: ${titulo.observacoes}`}
                     />
                     <ListItemSecondaryAction>
                       {/* Só mostra botões se tem permissão */}

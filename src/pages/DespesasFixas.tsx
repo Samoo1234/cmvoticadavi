@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { parseDecimalSeguro, formatarDecimal, validarValorMonetario, arredondarDuasCasas } from '../utils/decimalUtils';
 import {
   Box, Typography, Button, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, FormControl, InputLabel, Select,
@@ -102,11 +103,7 @@ export default function DespesasFixas() {
     return labels[periodicidade as keyof typeof labels] || periodicidade;
   };
 
-  const arredondarDuasCasas = (valor: string | number) => {
-    const num = typeof valor === 'string' ? parseFloat(valor.replace(',', '.')) : valor;
-    if (isNaN(num)) return '';
-    return (Math.round(num * 100) / 100).toFixed(2);
-  };
+  // Função removida - agora usando arredondarDuasCasas do decimalUtils
 
   const handleValorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let valor = e.target.value.replace(',', '.');
@@ -152,7 +149,7 @@ export default function DespesasFixas() {
         return;
       }
 
-      if (!formData.valor || parseFloat(formData.valor) <= 0) {
+      if (!formData.valor || !validarValorMonetario(formData.valor) || parseDecimalSeguro(formData.valor) <= 0) {
         showAlert('Valor deve ser maior que zero', 'error');
         return;
       }
@@ -171,7 +168,7 @@ export default function DespesasFixas() {
         filial_id: parseInt(formData.filial_id),
         categoria_id: formData.categoria_id ? parseInt(formData.categoria_id) : undefined,
         nome: formData.nome.trim(),
-        valor: parseFloat(arredondarDuasCasas(formData.valor)),
+        valor: parseDecimalSeguro(arredondarDuasCasas(formData.valor)),
         periodicidade: formData.periodicidade,
         dia_vencimento: parseInt(formData.dia_vencimento),
         observacao: formData.observacao.trim() || undefined,

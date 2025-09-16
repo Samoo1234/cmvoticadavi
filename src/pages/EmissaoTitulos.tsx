@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { formatDateToBrazilian } from '../utils/dateUtils';
 import { supabase } from '../services/supabase';
+import { parseDecimalSeguro, formatarDecimal, validarValorMonetario, arredondarDuasCasas } from '../utils/decimalUtils';
 import { 
   Box, 
   Typography, 
@@ -155,7 +156,7 @@ const EmissaoTitulos: React.FC = () => {
           data_emissao: titulo.data_emissao,
           pagamento: titulo.data_pagamento || '',
           data_pagamento: titulo.data_pagamento,
-          valor: (titulo.valor !== undefined && titulo.valor !== null && titulo.valor !== '' && !isNaN(Number(titulo.valor))) ? titulo.valor.toString() : '0.00',
+          valor: formatarDecimal(parseDecimalSeguro(titulo.valor || 0)),
           status: titulo.status,
           observacao: titulo.observacao,
           multa: titulo.multa,
@@ -325,20 +326,20 @@ const EmissaoTitulos: React.FC = () => {
     setModalEdicao(true);
   };
 
-  const arredondarDuasCasas = (valor: string | number) => {
-    const num = typeof valor === 'string' ? parseFloat(valor.replace(',', '.')) : valor;
-    if (isNaN(num)) return '';
-    return (Math.round(num * 100) / 100).toFixed(2);
-  };
+  // Função removida - agora usando arredondarDuasCasas do decimalUtils
 
-  // Substituir setMulta e setJuros para aceitar apenas até duas casas decimais
+  // Validação mais rigorosa para multa e juros
   const handleMultaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let valor = e.target.value.replace(',', '.');
-    if (/^\d*(\.\d{0,2})?$/.test(valor)) setMulta(valor);
+    if (/^\d*(\.\d{0,2})?$/.test(valor) && (validarValorMonetario(valor) || valor === '' || valor === '0')) {
+      setMulta(valor);
+    }
   };
   const handleJurosChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let valor = e.target.value.replace(',', '.');
-    if (/^\d*(\.\d{0,2})?$/.test(valor)) setJuros(valor);
+    if (/^\d*(\.\d{0,2})?$/.test(valor) && (validarValorMonetario(valor) || valor === '' || valor === '0')) {
+      setJuros(valor);
+    }
   };
 
   // Função para finalizar o pagamento normal (sem multa/juros)
@@ -436,8 +437,8 @@ const EmissaoTitulos: React.FC = () => {
       setIsLoading(true);
       console.log('Processando pagamento com multa/juros para título ID:', tituloSelecionado);
       
-      const multaValor = parseFloat(arredondarDuasCasas(multa)) || 0;
-      const jurosValor = parseFloat(arredondarDuasCasas(juros)) || 0;
+      const multaValor = parseDecimalSeguro(arredondarDuasCasas(multa));
+      const jurosValor = parseDecimalSeguro(arredondarDuasCasas(juros));
       
       // Buscar o título selecionado
       const tituloAtual = titulos.find(t => t.id === tituloSelecionado);
@@ -532,11 +533,11 @@ const EmissaoTitulos: React.FC = () => {
       setIsLoading(true);
       console.log('Processando edição para título ID:', tituloEdicao.id);
       
-      const multaValor = parseFloat(arredondarDuasCasas(multa)) || 0;
-      const jurosValor = parseFloat(arredondarDuasCasas(juros)) || 0;
+      const multaValor = parseDecimalSeguro(arredondarDuasCasas(multa));
+      const jurosValor = parseDecimalSeguro(arredondarDuasCasas(juros));
       
       // Preparar dados para atualização
-      const valorAtualizado = tituloEdicao.valor ? parseFloat(arredondarDuasCasas(tituloEdicao.valor)) : 0;
+      const valorAtualizado = parseDecimalSeguro(arredondarDuasCasas(tituloEdicao.valor || '0'));
       
       const dadosAtualizacao = {
         multa: multaValor,
@@ -558,7 +559,7 @@ const EmissaoTitulos: React.FC = () => {
               ...t,
               multa: multaValor,
               juros: jurosValor,
-              valor: valorAtualizado.toString() // Convertendo o valor numérico para string para manter o formato
+              valor: formatarDecimal(valorAtualizado) // Formatando o valor com precisão decimal
             };
           }
           return t;
@@ -573,7 +574,7 @@ const EmissaoTitulos: React.FC = () => {
               ...t,
               multa: multaValor,
               juros: jurosValor,
-              valor: valorAtualizado.toString()
+              valor: formatarDecimal(valorAtualizado)
             };
           }
           return t;
@@ -766,7 +767,7 @@ const EmissaoTitulos: React.FC = () => {
             variant="contained" 
             color="secondary" 
             onClick={handleConfirmarPagamentoComMultaJuros}
-            disabled={parseFloat(multa) <= 0 && parseFloat(juros) <= 0}
+            disabled={parseDecimalSeguro(multa) <= 0 && parseDecimalSeguro(juros) <= 0}
           >
             Confirmar com Multa/Juros
           </Button>
@@ -975,7 +976,7 @@ const EmissaoTitulos: React.FC = () => {
               <ListItem key={titulo.id} divider>
                 <ListItemText
                   primary={`${titulo.numero || ''} | ${titulo.tipo || 'Tipo não especificado'} | ${titulo.fornecedor} | ${titulo.filial}`}
-                  secondary={`Vencimento: ${formatDateToBrazilian(titulo.vencimento)} | Valor: R$ ${parseFloat(titulo.valor).toFixed(2)} | Status: ${titulo.status || 'Em aberto'} | Pagamento: ${titulo.pagamento ? formatDateToBrazilian(titulo.pagamento) : '-'}`}
+                  secondary={`Vencimento: ${formatDateToBrazilian(titulo.vencimento)} | Valor: R$ ${formatarDecimal(parseDecimalSeguro(titulo.valor))} | Status: ${titulo.status || 'Em aberto'} | Pagamento: ${titulo.pagamento ? formatDateToBrazilian(titulo.pagamento) : '-'}`}
                 />
                 <ListItemSecondaryAction>
                   <IconButton edge="end" aria-label="pagar" onClick={() => handlePagar(titulo.id)} disabled={titulo.status === 'pago'}>

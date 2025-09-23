@@ -75,6 +75,7 @@ const EmissaoTitulos: React.FC = () => {
   const [titulosFiltrados, setTitulosFiltrados] = useState<TituloCompleto[]>([]);
   const [filtros, setFiltros] = useState({ tipo: '', fornecedor: '', filial: '', dataInicial: '', dataFinal: '' });
   const [filtroTipo, setFiltroTipo] = useState({ vencimento: false, pagamento: false, todos: true });
+  const [mostrarPagos, setMostrarPagos] = useState(false);
   const [tipos, setTipos] = useState<{ id: number, nome: string }[]>([]);
   const [fornecedores, setFornecedores] = useState<{ id: number, nome: string }[]>([]);
   const [filiais, setFiliais] = useState<{ id: number, nome: string }[]>([]);
@@ -170,7 +171,15 @@ const EmissaoTitulos: React.FC = () => {
       console.log('Quantidade de títulos formatados:', titulosFormatados.length);
       
       setTitulos(titulosFormatados);
-      setTitulosFiltrados(titulosFormatados);
+      // Aplicar filtros iniciais (por padrão, só mostra pendentes) e ordenar
+      const titulosPendentes = titulosFormatados
+        .filter(titulo => titulo.status !== 'pago')
+        .sort((a, b) => {
+          const dataA = new Date(a.vencimento);
+          const dataB = new Date(b.vencimento);
+          return dataA.getTime() - dataB.getTime();
+        });
+      setTitulosFiltrados(titulosPendentes);
       
       console.log('Estado atualizado com', titulosFormatados.length, 'títulos');
       console.log('=== FIM DEBUG EMISSAO TITULOS ===');
@@ -217,7 +226,7 @@ const EmissaoTitulos: React.FC = () => {
   const handleFiltroChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const novosFiltros = { ...filtros, [e.target.name]: e.target.value };
     setFiltros(novosFiltros);
-    aplicarFiltros(novosFiltros, filtroTipo);
+    aplicarFiltros(novosFiltros, filtroTipo, mostrarPagos);
   };
 
   const handleFiltroTipoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -236,11 +245,22 @@ const EmissaoTitulos: React.FC = () => {
     }
     
     setFiltroTipo(novoFiltroTipo);
-    aplicarFiltros(filtros, novoFiltroTipo);
+    aplicarFiltros(filtros, novoFiltroTipo, mostrarPagos);
   };
 
-  const aplicarFiltros = (filtrosAtuais = filtros, tiposFiltro = filtroTipo) => {
+  const handleMostrarPagosChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const novoMostrarPagos = e.target.checked;
+    setMostrarPagos(novoMostrarPagos);
+    aplicarFiltros(filtros, filtroTipo, novoMostrarPagos);
+  };
+
+  const aplicarFiltros = (filtrosAtuais = filtros, tiposFiltro = filtroTipo, incluirPagos = mostrarPagos) => {
     let resultado = [...titulos];
+    
+    // PRIMEIRO: Filtrar por status de pagamento (por padrão, só mostra pendentes)
+    if (!incluirPagos) {
+      resultado = resultado.filter(titulo => titulo.status !== 'pago');
+    }
     
     // Filtrar por tipo
     if (filtrosAtuais.tipo) {
@@ -290,6 +310,13 @@ const EmissaoTitulos: React.FC = () => {
     if (tiposFiltro.pagamento && !tiposFiltro.todos) {
       resultado = resultado.filter(titulo => titulo.pagamento !== null && titulo.pagamento !== '');
     }
+    
+    // ORDENAR por data de vencimento (do mais antigo para o mais recente)
+    resultado.sort((a, b) => {
+      const dataA = new Date(a.vencimento);
+      const dataB = new Date(b.vencimento);
+      return dataA.getTime() - dataB.getTime();
+    });
     
     setTitulosFiltrados(resultado);
     setPaginaAtual(1); // Resetar para primeira página quando aplicar filtros
@@ -944,6 +971,24 @@ const EmissaoTitulos: React.FC = () => {
                     />
                   }
                   label="Todas as Datas"
+                />
+              </FormGroup>
+            </Box>
+            <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
+              <FormGroup>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={mostrarPagos}
+                      onChange={handleMostrarPagosChange}
+                      color="warning"
+                    />
+                  }
+                  label="Incluir Títulos Pagos"
+                  sx={{ 
+                    color: mostrarPagos ? 'warning.main' : 'text.secondary',
+                    fontWeight: mostrarPagos ? 'bold' : 'normal'
+                  }}
                 />
               </FormGroup>
             </Box>

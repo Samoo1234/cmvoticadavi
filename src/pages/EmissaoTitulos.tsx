@@ -38,7 +38,9 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import PaymentIcon from '@mui/icons-material/Payment';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import EditIcon from '@mui/icons-material/Edit';
-import RefreshIcon from '@mui/icons-material/Refresh';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import PendingActionsIcon from '@mui/icons-material/PendingActions';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import { filiaisService } from '../services/filiaisService';
 import { fornecedoresService } from '../services/fornecedoresService';
 import { tiposFornecedoresService } from '../services/tiposFornecedoresService';
@@ -306,6 +308,21 @@ const EmissaoTitulos: React.FC = () => {
   const handleMudarItensPorPagina = (novosItens: number) => {
     setItensPorPagina(novosItens);
     setPaginaAtual(1);
+  };
+
+  // Funções para calcular métricas do dashboard
+  const calcularMetricasDashboard = () => {
+    const totalTitulos = titulosFiltrados.length;
+    const titulosPendentes = titulosFiltrados.filter(titulo => titulo.status !== 'pago').length;
+    const valorTotal = titulosFiltrados.reduce((total, titulo) => {
+      return total + parseDecimalSeguro(titulo.valor || '0');
+    }, 0);
+
+    return {
+      totalTitulos,
+      titulosPendentes,
+      valorTotal
+    };
   };
 
   // Funções para ações
@@ -939,12 +956,87 @@ const EmissaoTitulos: React.FC = () => {
           </Box>
         </CardContent>
       </Card>
+      
+      {/* Mini Dashboard */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom color="primary" sx={{ mb: 3, fontWeight: 'bold' }}>
+            📊 Dashboard de Títulos
+          </Typography>
+          <Box sx={{ 
+            display: 'grid', 
+            gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' }, 
+            gap: 3 
+          }}>
+            {/* Total de Títulos */}
+            <Card sx={{ 
+              border: '2px solid #667eea',
+              transition: 'transform 0.2s ease-in-out',
+              '&:hover': { transform: 'translateY(-4px)' }
+            }}>
+              <CardContent sx={{ textAlign: 'center', py: 3 }}>
+                <AssignmentIcon sx={{ fontSize: 48, mb: 1, color: '#667eea' }} />
+                <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', mb: 1, color: '#667eea' }}>
+                  {calcularMetricasDashboard().totalTitulos}
+                </Typography>
+                <Typography variant="body1" color="textSecondary">
+                  Total de Títulos
+                </Typography>
+              </CardContent>
+            </Card>
+
+            {/* Títulos Pendentes */}
+            <Card sx={{ 
+              border: calcularMetricasDashboard().titulosPendentes > 0 
+                ? '2px solid #d32f2f' 
+                : '2px solid #2e7d32',
+              transition: 'transform 0.2s ease-in-out',
+              '&:hover': { transform: 'translateY(-4px)' }
+            }}>
+              <CardContent sx={{ textAlign: 'center', py: 3 }}>
+                <PendingActionsIcon sx={{ 
+                  fontSize: 48, 
+                  mb: 1, 
+                  color: calcularMetricasDashboard().titulosPendentes > 0 ? '#d32f2f' : '#2e7d32'
+                }} />
+                <Typography variant="h4" component="div" sx={{ 
+                  fontWeight: 'bold', 
+                  mb: 1,
+                  color: calcularMetricasDashboard().titulosPendentes > 0 ? '#d32f2f' : '#2e7d32'
+                }}>
+                  {calcularMetricasDashboard().titulosPendentes}
+                </Typography>
+                <Typography variant="body1" color="textSecondary">
+                  Títulos Pendentes
+                </Typography>
+              </CardContent>
+            </Card>
+
+            {/* Valor Total */}
+            <Card sx={{ 
+              border: '2px solid #e65100',
+              transition: 'transform 0.2s ease-in-out',
+              '&:hover': { transform: 'translateY(-4px)' }
+            }}>
+              <CardContent sx={{ textAlign: 'center', py: 3 }}>
+                <AttachMoneyIcon sx={{ fontSize: 48, mb: 1, color: '#e65100' }} />
+                <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', mb: 1, color: '#e65100' }}>
+                  R$ {formatarDecimal(calcularMetricasDashboard().valorTotal)}
+                </Typography>
+                <Typography variant="body1" color="textSecondary">
+                  Valor Total
+                </Typography>
+              </CardContent>
+            </Card>
+          </Box>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
             <Typography variant="h6">Extrato de Títulos</Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button variant="outlined" startIcon={<RefreshIcon />} onClick={carregarDados}>Atualizar</Button>
               <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleGerarPDF}>Gerar PDF</Button>
             </Box>
           </Box>

@@ -31,15 +31,7 @@ import {
   Pagination,
   Select,
   FormControl,
-  InputLabel,
-  Collapse,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper
+  InputLabel
 } from '@mui/material';
 
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -49,9 +41,6 @@ import EditIcon from '@mui/icons-material/Edit';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import PendingActionsIcon from '@mui/icons-material/PendingActions';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import { filiaisService } from '../services/filiaisService';
 import { fornecedoresService } from '../services/fornecedoresService';
 import { tiposFornecedoresService } from '../services/tiposFornecedoresService';
@@ -81,18 +70,6 @@ interface TituloCompleto extends Titulo {
   juros?: number;
 }
 
-interface DashboardMetricas {
-  titulosPagos: { quantidade: number; valor: number };
-  titulosPendentes: { quantidade: number; valor: number };
-  totalGeral: { quantidade: number; valor: number };
-}
-
-interface DashboardMensal {
-  mes: string;
-  ano: number;
-  metricas: DashboardMetricas;
-}
-
 const EmissaoTitulos: React.FC = () => {
   const [titulos, setTitulos] = useState<TituloCompleto[]>([]);
   const [titulosFiltrados, setTitulosFiltrados] = useState<TituloCompleto[]>([]);
@@ -119,9 +96,6 @@ const EmissaoTitulos: React.FC = () => {
   // Estados para o modal de edição
   const [modalEdicao, setModalEdicao] = useState(false);
   const [tituloEdicao, setTituloEdicao] = useState<TituloCompleto | null>(null);
-  
-  // Estados para o dashboard mensal
-  const [mostrarDashboardMensal, setMostrarDashboardMensal] = useState(false);
   
 
   // Função para carregar dados (definida fora do useEffect para ser reutilizável)
@@ -364,141 +338,18 @@ const EmissaoTitulos: React.FC = () => {
   };
 
   // Funções para calcular métricas do dashboard
-  const calcularMetricasDashboard = (): DashboardMetricas => {
-    // Se há filtro de período, usar apenas títulos dentro do período
-    let titulosParaCalculo = titulosFiltrados;
-    
-    if (filtros.dataInicial && filtros.dataFinal) {
-      // CORREÇÃO: Usar horário local sem conversão GMT
-      const dataInicio = new Date(filtros.dataInicial + 'T00:00:00');
-      const dataFim = new Date(filtros.dataFinal + 'T23:59:59');
-      
-      titulosParaCalculo = titulosFiltrados.filter(titulo => {
-        let dataComparacao: Date;
-        
-        if (filtroTipo.vencimento) {
-          dataComparacao = new Date(titulo.vencimento);
-        } else if (filtroTipo.pagamento && titulo.data_pagamento) {
-          dataComparacao = new Date(titulo.data_pagamento);
-        } else {
-          // Para "todos", usar data de vencimento como padrão
-          dataComparacao = new Date(titulo.vencimento);
-        }
-        
-        return dataComparacao >= dataInicio && dataComparacao <= dataFim;
-      });
-    }
-    
-    const titulosPagos = titulosParaCalculo.filter(titulo => titulo.status === 'pago');
-    const titulosPendentes = titulosParaCalculo.filter(titulo => titulo.status !== 'pago');
-    
-    return {
-      titulosPagos: {
-        quantidade: titulosPagos.length,
-        valor: titulosPagos.reduce((total, titulo) => total + parseDecimalSeguro(titulo.valor || '0'), 0)
-      },
-      titulosPendentes: {
-        quantidade: titulosPendentes.length,
-        valor: titulosPendentes.reduce((total, titulo) => total + parseDecimalSeguro(titulo.valor || '0'), 0)
-      },
-      totalGeral: {
-        quantidade: titulosParaCalculo.length,
-        valor: titulosParaCalculo.reduce((total, titulo) => total + parseDecimalSeguro(titulo.valor || '0'), 0)
-      }
-    };
-  };
+  const calcularMetricasDashboard = () => {
+    const totalTitulos = titulosFiltrados.length;
+    const titulosPendentes = titulosFiltrados.filter(titulo => titulo.status !== 'pago').length;
+    const valorTotal = titulosFiltrados.reduce((total, titulo) => {
+      return total + parseDecimalSeguro(titulo.valor || '0');
+    }, 0);
 
-  // Função para calcular dashboard mensal
-  const calcularDashboardMensal = (): DashboardMensal[] => {
-    if (!filtros.dataInicial || !filtros.dataFinal) return [];
-    
-    // CORREÇÃO: Usar horário local sem conversão GMT
-    const dataInicio = new Date(filtros.dataInicial + 'T00:00:00');
-    const dataFim = new Date(filtros.dataFinal + 'T23:59:59');
-    const mesesData: DashboardMensal[] = [];
-    
-    // Iterar mês a mês entre as datas - começar exatamente do mês da data inicial
-    // CORREÇÃO: Só mostrar meses que estão dentro do período especificado
-    const mesInicial = dataInicio.getMonth();
-    const anoInicial = dataInicio.getFullYear();
-    const mesFinal = dataFim.getMonth();
-    const anoFinal = dataFim.getFullYear();
-    
-    const dataAtual = new Date(anoInicial, mesInicial, 1);
-    const dataFinal = new Date(anoFinal, mesFinal, 1);
-    
-    while (dataAtual <= dataFinal) {
-      const ano = dataAtual.getFullYear();
-      const mes = dataAtual.getMonth();
-      
-      // VALIDAÇÃO: Só processar se o mês/ano está dentro do período especificado
-      const primeiroDiaDoMes = new Date(ano, mes, 1);
-      const ultimoDiaDoMes = new Date(ano, mes + 1, 0); // Último dia do mês
-      
-      // Verificar se há sobreposição entre o mês atual e o período filtrado
-      const mesTemSobreposicao = (primeiroDiaDoMes <= dataFim) && (ultimoDiaDoMes >= dataInicio);
-      
-      if (!mesTemSobreposicao) {
-        dataAtual.setMonth(dataAtual.getMonth() + 1);
-        continue;
-      }
-      
-      const nomesMeses = [
-        'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-      ];
-      
-      // Filtrar títulos do mês atual baseado no tipo de filtro E dentro do período especificado
-      const titulosDoMes = titulosFiltrados.filter(titulo => {
-        let dataComparacao: Date;
-        
-        if (filtroTipo.vencimento) {
-          dataComparacao = new Date(titulo.vencimento);
-        } else if (filtroTipo.pagamento && titulo.data_pagamento) {
-          dataComparacao = new Date(titulo.data_pagamento);
-        } else {
-          // Para "todos", usar data de vencimento como padrão
-          dataComparacao = new Date(titulo.vencimento);
-        }
-        
-        // Verificar se está no mês/ano atual E dentro do período especificado
-        const estaNoPeriodo = dataComparacao >= dataInicio && dataComparacao <= dataFim;
-        const estaNoMes = dataComparacao.getFullYear() === ano && dataComparacao.getMonth() === mes;
-        
-        return estaNoPeriodo && estaNoMes;
-      });
-      
-      // Calcular métricas do mês
-      const titulosPagos = titulosDoMes.filter(titulo => titulo.status === 'pago');
-      const titulosPendentes = titulosDoMes.filter(titulo => titulo.status !== 'pago');
-      
-      const metricas: DashboardMetricas = {
-        titulosPagos: {
-          quantidade: titulosPagos.length,
-          valor: titulosPagos.reduce((total, titulo) => total + parseDecimalSeguro(titulo.valor || '0'), 0)
-        },
-        titulosPendentes: {
-          quantidade: titulosPendentes.length,
-          valor: titulosPendentes.reduce((total, titulo) => total + parseDecimalSeguro(titulo.valor || '0'), 0)
-        },
-        totalGeral: {
-          quantidade: titulosDoMes.length,
-          valor: titulosDoMes.reduce((total, titulo) => total + parseDecimalSeguro(titulo.valor || '0'), 0)
-        }
-      };
-      
-      // Adicionar todos os meses do período, mesmo que vazios (para mostrar evolução completa)
-      mesesData.push({
-        mes: nomesMeses[mes],
-        ano: ano,
-        metricas: metricas
-      });
-      
-      // Avançar para o próximo mês
-      dataAtual.setMonth(dataAtual.getMonth() + 1);
-    }
-    
-    return mesesData;
+    return {
+      totalTitulos,
+      titulosPendentes,
+      valorTotal
+    };
   };
 
   // Funções para ações
@@ -843,11 +694,6 @@ const EmissaoTitulos: React.FC = () => {
         filtroTipo: filtroTipo
       };
       
-      // Incluir dados mensais se houver filtro de período
-      const dadosMensais = filtros.dataInicial && filtros.dataFinal ? calcularDashboardMensal() : [];
-      const metricas = calcularMetricasDashboard();
-      
-      // Por enquanto, usar a função original do PDF - pode ser expandida futuramente
       const doc = relatorioService.gerarRelatorioTitulos(titulosFiltrados, filtrosRelatorio);
       
       const nomeArquivo = `relatorio-titulos-${new Date().toISOString().slice(0, 10)}.pdf`;
@@ -867,150 +713,7 @@ const EmissaoTitulos: React.FC = () => {
       });
     }
   };
-
-  const handleGerarPDFMensal = () => {
-    try {
-      if (!filtros.dataInicial || !filtros.dataFinal) {
-        setAlert({
-          open: true,
-          message: 'Selecione um período para gerar o relatório mensal.',
-          severity: 'warning'
-        });
-        return;
-      }
-
-      // Importar jsPDF dinamicamente
-      import('jspdf').then(({ default: jsPDF }) => {
-        const doc = new jsPDF();
-        const dadosMensais = calcularDashboardMensal();
-        const metricas = calcularMetricasDashboard();
-        
-        // Configurações do documento
-        const pageWidth = doc.internal.pageSize.width;
-        const margin = 20;
-        let yPosition = 30;
-        
-        // Título do relatório
-        doc.setFontSize(18);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Dashboard Mensal - Títulos', pageWidth / 2, yPosition, { align: 'center' });
-        
-        yPosition += 15;
-        
-        // Período
-        doc.setFontSize(12);
-        doc.setFont('helvetica', 'normal');
-        const periodoTexto = `Período: ${filtros.dataInicial?.split('-').reverse().join('/')} a ${filtros.dataFinal?.split('-').reverse().join('/')}`;
-        doc.text(periodoTexto, pageWidth / 2, yPosition, { align: 'center' });
-        
-        yPosition += 20;
-        
-        // Resumo geral
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Resumo Geral do Período', margin, yPosition);
-        
-        yPosition += 10;
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        
-        // Títulos Pagos
-        doc.setTextColor(33, 150, 243); // Azul
-        doc.text(`Títulos Pagos: ${metricas.titulosPagos.quantidade} títulos - R$ ${metricas.titulosPagos.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin, yPosition);
-        
-        yPosition += 8;
-        
-        // Títulos Pendentes
-        doc.setTextColor(244, 67, 54); // Vermelho
-        doc.text(`Títulos Pendentes: ${metricas.titulosPendentes.quantidade} títulos - R$ ${metricas.titulosPendentes.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin, yPosition);
-        
-        yPosition += 8;
-        
-        // Total Geral
-        doc.setTextColor(255, 152, 0); // Laranja
-        doc.text(`Total Geral: ${metricas.totalGeral.quantidade} títulos - R$ ${metricas.totalGeral.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin, yPosition);
-        
-        yPosition += 20;
-        
-        // Detalhamento mensal
-        doc.setTextColor(0, 0, 0); // Preto
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Detalhamento Mensal', margin, yPosition);
-        
-        yPosition += 15;
-        
-        // Cabeçalho da tabela
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Mês/Ano', margin, yPosition);
-        doc.text('Títulos Pagos', margin + 40, yPosition);
-        doc.text('Títulos Pendentes', margin + 90, yPosition);
-        doc.text('Total Geral', margin + 140, yPosition);
-        
-        yPosition += 8;
-        
-        // Linha separadora
-        doc.line(margin, yPosition - 2, pageWidth - margin, yPosition - 2);
-        
-        yPosition += 5;
-        
-        // Dados mensais
-        doc.setFont('helvetica', 'normal');
-        dadosMensais.forEach((dadosMes) => {
-          if (yPosition > 250) { // Nova página se necessário
-            doc.addPage();
-            yPosition = 30;
-          }
-          
-          // Mês/Ano
-          doc.setTextColor(0, 0, 0);
-          doc.text(`${dadosMes.mes} ${dadosMes.ano}`, margin, yPosition);
-          
-          // Títulos Pagos
-          doc.setTextColor(33, 150, 243);
-          doc.text(`${dadosMes.metricas.titulosPagos.quantidade}`, margin + 40, yPosition);
-          doc.text(`R$ ${dadosMes.metricas.titulosPagos.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin + 50, yPosition);
-          
-          // Títulos Pendentes
-          doc.setTextColor(244, 67, 54);
-          doc.text(`${dadosMes.metricas.titulosPendentes.quantidade}`, margin + 90, yPosition);
-          doc.text(`R$ ${dadosMes.metricas.titulosPendentes.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin + 100, yPosition);
-          
-          // Total Geral
-          doc.setTextColor(255, 152, 0);
-          doc.text(`${dadosMes.metricas.totalGeral.quantidade}`, margin + 140, yPosition);
-          doc.text(`R$ ${dadosMes.metricas.totalGeral.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin + 150, yPosition);
-          
-          yPosition += 10;
-        });
-        
-        // Rodapé
-        const dataGeracao = new Date().toLocaleString('pt-BR');
-        doc.setTextColor(128, 128, 128);
-        doc.setFontSize(8);
-        doc.text(`Gerado em: ${dataGeracao}`, margin, doc.internal.pageSize.height - 10);
-        
-        // Salvar o PDF
-        const nomeArquivo = `dashboard-mensal-${filtros.dataInicial}-${filtros.dataFinal}.pdf`;
-        doc.save(nomeArquivo);
-        
-        setAlert({
-          open: true,
-          message: 'Relatório mensal PDF gerado com sucesso!',
-          severity: 'success'
-        });
-      });
-    } catch (error) {
-      console.error('Erro ao gerar PDF mensal:', error);
-      setAlert({
-        open: true,
-        message: 'Erro ao gerar relatório mensal PDF. Tente novamente.',
-        severity: 'error'
-      });
-    }
-  };
-
+  
   const handleCloseAlert = () => {
     setAlert({ ...alert, open: false });
   };
@@ -1310,29 +1013,28 @@ const EmissaoTitulos: React.FC = () => {
             gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' }, 
             gap: 3 
           }}>
-            {/* Títulos Pagos */}
+            {/* Total de Títulos */}
             <Card sx={{ 
-              border: '2px solid #2196F3',
+              border: '2px solid #667eea',
               transition: 'transform 0.2s ease-in-out',
               '&:hover': { transform: 'translateY(-4px)' }
             }}>
               <CardContent sx={{ textAlign: 'center', py: 3 }}>
-                <PaymentIcon sx={{ fontSize: 48, mb: 1, color: '#2196F3' }} />
-                <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', mb: 1, color: '#2196F3' }}>
-                  {calcularMetricasDashboard().titulosPagos.quantidade}
-                </Typography>
-                <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', mb: 1, color: '#2196F3' }}>
-                  R$ {formatarDecimal(calcularMetricasDashboard().titulosPagos.valor)}
+                <AssignmentIcon sx={{ fontSize: 48, mb: 1, color: '#667eea' }} />
+                <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', mb: 1, color: '#667eea' }}>
+                  {calcularMetricasDashboard().totalTitulos}
                 </Typography>
                 <Typography variant="body1" color="textSecondary">
-                  Títulos Pagos
+                  Total de Títulos
                 </Typography>
               </CardContent>
             </Card>
 
             {/* Títulos Pendentes */}
             <Card sx={{ 
-              border: '2px solid #F44336',
+              border: calcularMetricasDashboard().titulosPendentes > 0 
+                ? '2px solid #d32f2f' 
+                : '2px solid #2e7d32',
               transition: 'transform 0.2s ease-in-out',
               '&:hover': { transform: 'translateY(-4px)' }
             }}>
@@ -1340,17 +1042,14 @@ const EmissaoTitulos: React.FC = () => {
                 <PendingActionsIcon sx={{ 
                   fontSize: 48, 
                   mb: 1, 
-                  color: '#F44336'
+                  color: calcularMetricasDashboard().titulosPendentes > 0 ? '#d32f2f' : '#2e7d32'
                 }} />
                 <Typography variant="h4" component="div" sx={{ 
                   fontWeight: 'bold', 
                   mb: 1,
-                  color: '#F44336'
+                  color: calcularMetricasDashboard().titulosPendentes > 0 ? '#d32f2f' : '#2e7d32'
                 }}>
-                  {calcularMetricasDashboard().titulosPendentes.quantidade}
-                </Typography>
-                <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', mb: 1, color: '#F44336' }}>
-                  R$ {formatarDecimal(calcularMetricasDashboard().titulosPendentes.valor)}
+                  {calcularMetricasDashboard().titulosPendentes}
                 </Typography>
                 <Typography variant="body1" color="textSecondary">
                   Títulos Pendentes
@@ -1358,133 +1057,25 @@ const EmissaoTitulos: React.FC = () => {
               </CardContent>
             </Card>
 
-            {/* Total Geral */}
+            {/* Valor Total */}
             <Card sx={{ 
-              border: '2px solid #FF9800',
+              border: '2px solid #e65100',
               transition: 'transform 0.2s ease-in-out',
               '&:hover': { transform: 'translateY(-4px)' }
             }}>
               <CardContent sx={{ textAlign: 'center', py: 3 }}>
-                <AssignmentIcon sx={{ fontSize: 48, mb: 1, color: '#FF9800' }} />
-                <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', mb: 1, color: '#FF9800' }}>
-                  {calcularMetricasDashboard().totalGeral.quantidade}
-                </Typography>
-                <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', mb: 1, color: '#FF9800' }}>
-                  R$ {formatarDecimal(calcularMetricasDashboard().totalGeral.valor)}
+                <AttachMoneyIcon sx={{ fontSize: 48, mb: 1, color: '#e65100' }} />
+                <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', mb: 1, color: '#e65100' }}>
+                  R$ {formatarDecimal(calcularMetricasDashboard().valorTotal)}
                 </Typography>
                 <Typography variant="body1" color="textSecondary">
-                  Total Geral
+                  Valor Total
                 </Typography>
               </CardContent>
             </Card>
           </Box>
         </CardContent>
       </Card>
-
-      {/* Dashboard Mensal */}
-      {filtros.dataInicial && filtros.dataFinal ? (
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6" gutterBottom color="primary" sx={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CalendarMonthIcon />
-                📈 Dashboard Mensal ({filtros.dataInicial?.split('-').reverse().join('/')} a {filtros.dataFinal?.split('-').reverse().join('/')})
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button
-                  variant="outlined"
-                  startIcon={<PictureAsPdfIcon />}
-                  onClick={handleGerarPDFMensal}
-                  size="small"
-                >
-                  PDF Mensal
-                </Button>
-                <Button
-                  variant="outlined"
-                  onClick={() => setMostrarDashboardMensal(!mostrarDashboardMensal)}
-                  endIcon={mostrarDashboardMensal ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                >
-                  {mostrarDashboardMensal ? 'Ocultar' : 'Mostrar'} Detalhes
-                </Button>
-              </Box>
-            </Box>
-            
-            <Collapse in={mostrarDashboardMensal}>
-              <TableContainer component={Paper} sx={{ mt: 2 }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Mês/Ano</TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 'bold', color: '#2196F3' }}>Títulos Pagos</TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 'bold', color: '#F44336' }}>Títulos Pendentes</TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 'bold', color: '#FF9800' }}>Total Geral</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {calcularDashboardMensal().map((dadosMes, index) => (
-                      <TableRow key={`${dadosMes.mes}-${dadosMes.ano}`} sx={{ '&:nth-of-type(odd)': { backgroundColor: '#fafafa' } }}>
-                        <TableCell sx={{ fontWeight: 'bold' }}>
-                          {dadosMes.mes} {dadosMes.ano}
-                        </TableCell>
-                        <TableCell align="center">
-                          <Box sx={{ color: '#2196F3' }}>
-                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                              {dadosMes.metricas.titulosPagos.quantidade} títulos
-                            </Typography>
-                            <Typography variant="body2">
-                              R$ {formatarDecimal(dadosMes.metricas.titulosPagos.valor)}
-                            </Typography>
-                          </Box>
-                        </TableCell>
-                        <TableCell align="center">
-                          <Box sx={{ color: '#F44336' }}>
-                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                              {dadosMes.metricas.titulosPendentes.quantidade} títulos
-                            </Typography>
-                            <Typography variant="body2">
-                              R$ {formatarDecimal(dadosMes.metricas.titulosPendentes.valor)}
-                            </Typography>
-                          </Box>
-                        </TableCell>
-                        <TableCell align="center">
-                          <Box sx={{ color: '#FF9800' }}>
-                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                              {dadosMes.metricas.totalGeral.quantidade} títulos
-                            </Typography>
-                            <Typography variant="body2">
-                              R$ {formatarDecimal(dadosMes.metricas.totalGeral.valor)}
-                            </Typography>
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {calcularDashboardMensal().length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={4} align="center" sx={{ py: 3, color: 'text.secondary' }}>
-                          Nenhum dado encontrado para o período selecionado
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Collapse>
-          </CardContent>
-        </Card>
-      ) : (
-        // Dica para mostrar dashboard mensal
-        <Card sx={{ mb: 3, backgroundColor: '#f8f9fa', border: '1px dashed #dee2e6' }}>
-          <CardContent sx={{ textAlign: 'center', py: 2 }}>
-            <CalendarMonthIcon sx={{ fontSize: 40, color: '#6c757d', mb: 1 }} />
-            <Typography variant="body1" color="textSecondary" sx={{ mb: 1 }}>
-              💡 <strong>Dica:</strong> Selecione um período (Data Inicial e Final) para visualizar o dashboard mensal
-            </Typography>
-            <Typography variant="body2" color="textSecondary">
-              O dashboard mensal mostra a evolução dos títulos mês a mês no período selecionado
-            </Typography>
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardContent>

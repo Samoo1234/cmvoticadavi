@@ -973,10 +973,18 @@ const EmissaoTitulos: React.FC = () => {
       dadosAgrupados[filial][mesAno].push(titulo);
     });
 
+    // Garantir que todas as filiais apareçam no breakdown, mesmo sem títulos
+    const todasFiliais = filtros.filial ? [filtros.filial] : filiais.map(f => f.nome);
+    todasFiliais.forEach(filialNome => {
+      if (!dadosAgrupados[filialNome]) {
+        dadosAgrupados[filialNome] = {};
+      }
+    });
+
     // Dados agrupados por filial e mês
 
-    // Processar dados para o breakdown
-    const breakdown = Object.keys(dadosAgrupados).map(filialNome => {
+    // Processar dados para o breakdown - agora inclui todas as filiais
+    const breakdown = todasFiliais.map(filialNome => {
       const mesesFilial = dadosAgrupados[filialNome];
       const meses: any[] = [];
 

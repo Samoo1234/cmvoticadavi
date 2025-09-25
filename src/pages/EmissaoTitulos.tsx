@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { formatDateToBrazilian } from '../utils/dateUtils';
 import { supabase } from '../services/supabase';
-import { parseDecimalSeguro, formatarDecimal, validarValorMonetario, arredondarDuasCasas } from '../utils/decimalUtils';
+import { parseDecimalSeguro, formatarDecimal, validarValorMonetario, arredondarDuasCasas, somarValores } from '../utils/decimalUtils';
 import { 
   Box, 
   Typography, 
@@ -405,22 +405,37 @@ const EmissaoTitulos: React.FC = () => {
       agrupamentoPorTipo[tipo].push(titulo);
     });
 
-    // Calcular totais gerais da filial para percentuais
-    const totalGeralValorFilial = titulosFiltradosFilial.reduce((total, titulo) => 
-      total + parseDecimalSeguro(titulo.valor || '0'), 0);
+    // Calcular totais gerais da filial para percentuais com validação monetária
+    const totalGeralValorFilial = titulosFiltradosFilial.reduce((total, titulo) => {
+      const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
+        parseDecimalSeguro(titulo.valor || '0') : 0;
+      return parseDecimalSeguro(somarValores(total, valorValidado));
+    }, 0);
 
-    // Processar cada tipo da filial
-    const dadosTabulados: DadosTabulados[] = Object.keys(agrupamentoPorTipo).map(tipo => {
-      const titulosDoTipo = agrupamentoPorTipo[tipo];
+    // Criar lista de todos os tipos (incluindo os sem dados)
+    const todosOsTipos = tipos.map(t => t.nome);
+    
+    // Processar cada tipo (incluindo os que não têm títulos)
+    const dadosTabulados: DadosTabulados[] = todosOsTipos.map(tipo => {
+      const titulosDoTipo = agrupamentoPorTipo[tipo] || [];
       
       const titulosPagos = titulosDoTipo.filter(t => t.status === 'pago');
       const titulosPendentes = titulosDoTipo.filter(t => t.status !== 'pago');
       
-      const valorPago = titulosPagos.reduce((total, titulo) => 
-        total + parseDecimalSeguro(titulo.valor || '0'), 0);
-      const valorPendente = titulosPendentes.reduce((total, titulo) => 
-        total + parseDecimalSeguro(titulo.valor || '0'), 0);
-      const valorTotal = valorPago + valorPendente;
+      // Calcular valores com validação monetária rigorosa
+      const valorPago = titulosPagos.reduce((total, titulo) => {
+        const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
+          parseDecimalSeguro(titulo.valor || '0') : 0;
+        return parseDecimalSeguro(somarValores(total, valorValidado));
+      }, 0);
+      
+      const valorPendente = titulosPendentes.reduce((total, titulo) => {
+        const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
+          parseDecimalSeguro(titulo.valor || '0') : 0;
+        return parseDecimalSeguro(somarValores(total, valorValidado));
+      }, 0);
+      
+      const valorTotal = parseDecimalSeguro(somarValores(valorPago, valorPendente));
       
       return {
         tipo,
@@ -436,12 +451,18 @@ const EmissaoTitulos: React.FC = () => {
           quantidade: titulosDoTipo.length,
           valor: valorTotal
         },
-        percentual: totalGeralValorFilial > 0 ? (valorTotal / totalGeralValorFilial) * 100 : 0
+        percentual: totalGeralValorFilial > 0 ? 
+          parseDecimalSeguro((valorTotal / totalGeralValorFilial) * 100) : 0
       };
     });
 
-    // Ordenar por valor total (maior para menor)
-    return dadosTabulados.sort((a, b) => b.total.valor - a.total.valor);
+    // Ordenar por valor total (maior para menor), mas manter tipos com valor 0 no final
+    return dadosTabulados.sort((a, b) => {
+      if (a.total.valor === 0 && b.total.valor === 0) return a.tipo.localeCompare(b.tipo);
+      if (a.total.valor === 0) return 1;
+      if (b.total.valor === 0) return -1;
+      return b.total.valor - a.total.valor;
+    });
   };
 
   // Função para calcular dados tabulados por tipo
@@ -474,22 +495,37 @@ const EmissaoTitulos: React.FC = () => {
       agrupamentoPorTipo[tipo].push(titulo);
     });
 
-    // Calcular totais gerais para percentuais
-    const totalGeralValor = titulosFiltradosRelatorio.reduce((total, titulo) => 
-      total + parseDecimalSeguro(titulo.valor || '0'), 0);
+    // Calcular totais gerais para percentuais com validação monetária
+    const totalGeralValor = titulosFiltradosRelatorio.reduce((total, titulo) => {
+      const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
+        parseDecimalSeguro(titulo.valor || '0') : 0;
+      return parseDecimalSeguro(somarValores(total, valorValidado));
+    }, 0);
 
-    // Processar cada tipo
-    const dadosTabulados: DadosTabulados[] = Object.keys(agrupamentoPorTipo).map(tipo => {
-      const titulosDoTipo = agrupamentoPorTipo[tipo];
+    // Criar lista de todos os tipos (incluindo os sem dados)
+    const todosOsTipos = tipos.map(t => t.nome);
+    
+    // Processar cada tipo (incluindo os que não têm títulos)
+    const dadosTabulados: DadosTabulados[] = todosOsTipos.map(tipo => {
+      const titulosDoTipo = agrupamentoPorTipo[tipo] || [];
       
       const titulosPagos = titulosDoTipo.filter(t => t.status === 'pago');
       const titulosPendentes = titulosDoTipo.filter(t => t.status !== 'pago');
       
-      const valorPago = titulosPagos.reduce((total, titulo) => 
-        total + parseDecimalSeguro(titulo.valor || '0'), 0);
-      const valorPendente = titulosPendentes.reduce((total, titulo) => 
-        total + parseDecimalSeguro(titulo.valor || '0'), 0);
-      const valorTotal = valorPago + valorPendente;
+      // Calcular valores com validação monetária rigorosa
+      const valorPago = titulosPagos.reduce((total, titulo) => {
+        const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
+          parseDecimalSeguro(titulo.valor || '0') : 0;
+        return parseDecimalSeguro(somarValores(total, valorValidado));
+      }, 0);
+      
+      const valorPendente = titulosPendentes.reduce((total, titulo) => {
+        const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
+          parseDecimalSeguro(titulo.valor || '0') : 0;
+        return parseDecimalSeguro(somarValores(total, valorValidado));
+      }, 0);
+      
+      const valorTotal = parseDecimalSeguro(somarValores(valorPago, valorPendente));
       
       return {
         tipo,
@@ -505,12 +541,90 @@ const EmissaoTitulos: React.FC = () => {
           quantidade: titulosDoTipo.length,
           valor: valorTotal
         },
-        percentual: totalGeralValor > 0 ? (valorTotal / totalGeralValor) * 100 : 0
+        percentual: totalGeralValor > 0 ? 
+          parseDecimalSeguro((valorTotal / totalGeralValor) * 100) : 0
       };
     });
 
-    // Ordenar por valor total (maior para menor)
-    return dadosTabulados.sort((a, b) => b.total.valor - a.total.valor);
+    // Ordenar por valor total (maior para menor), mas manter tipos com valor 0 no final
+    return dadosTabulados.sort((a, b) => {
+      if (a.total.valor === 0 && b.total.valor === 0) return a.tipo.localeCompare(b.tipo);
+      if (a.total.valor === 0) return 1;
+      if (b.total.valor === 0) return -1;
+      return b.total.valor - a.total.valor;
+    });
+  };
+
+  // Função para calcular resumo geral de todos os títulos
+  const calcularResumoGeral = (): DadosTabulados[] => {
+    // Agrupar todos os títulos por tipo
+    const agrupamentoPorTipo: { [tipo: string]: TituloCompleto[] } = {};
+    titulos.forEach(titulo => {
+      const tipo = titulo.tipo || 'Não especificado';
+      if (!agrupamentoPorTipo[tipo]) {
+        agrupamentoPorTipo[tipo] = [];
+      }
+      agrupamentoPorTipo[tipo].push(titulo);
+    });
+
+    // Calcular total geral para percentuais com validação monetária
+    const totalGeralValor = titulos.reduce((total, titulo) => {
+      const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
+        parseDecimalSeguro(titulo.valor || '0') : 0;
+      return parseDecimalSeguro(somarValores(total, valorValidado));
+    }, 0);
+
+    // Criar lista de todos os tipos (incluindo os sem dados)
+    const todosOsTipos = tipos.map(t => t.nome);
+    
+    // Processar cada tipo
+    const dadosResumo: DadosTabulados[] = todosOsTipos.map(tipo => {
+      const titulosDoTipo = agrupamentoPorTipo[tipo] || [];
+      
+      const titulosPagos = titulosDoTipo.filter(t => t.status === 'pago');
+      const titulosPendentes = titulosDoTipo.filter(t => t.status !== 'pago');
+      
+      // Calcular valores com validação monetária rigorosa
+      const valorPago = titulosPagos.reduce((total, titulo) => {
+        const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
+          parseDecimalSeguro(titulo.valor || '0') : 0;
+        return parseDecimalSeguro(somarValores(total, valorValidado));
+      }, 0);
+      
+      const valorPendente = titulosPendentes.reduce((total, titulo) => {
+        const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
+          parseDecimalSeguro(titulo.valor || '0') : 0;
+        return parseDecimalSeguro(somarValores(total, valorValidado));
+      }, 0);
+      
+      const valorTotal = parseDecimalSeguro(somarValores(valorPago, valorPendente));
+      
+      return {
+        tipo,
+        pendente: {
+          quantidade: titulosPendentes.length,
+          valor: valorPendente
+        },
+        pago: {
+          quantidade: titulosPagos.length,
+          valor: valorPago
+        },
+        total: {
+          quantidade: titulosDoTipo.length,
+          valor: valorTotal
+        },
+        percentual: totalGeralValor > 0 ? 
+          parseDecimalSeguro((valorTotal / totalGeralValor) * 100) : 0
+      };
+    });
+
+    // Ordenar por valor total (maior para menor), mas manter tipos com valor 0 no final
+    return dadosResumo.sort((a, b) => {
+      if (a.total.valor === 0 && b.total.valor === 0) return a.tipo.localeCompare(b.tipo);
+      if (a.total.valor === 0) return 1;
+      if (b.total.valor === 0) return -1;
+      return b.total.valor - a.total.valor;
+    });
   };
 
   // Função para gerar relatório tabulado
@@ -1406,6 +1520,84 @@ const EmissaoTitulos: React.FC = () => {
               </DialogContentText>
               
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {/* Resumo Geral de Títulos */}
+                <Box>
+                  <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold', textAlign: 'center' }}>
+                    📊 Resumo Geral de Títulos
+                  </Typography>
+                  <TableContainer component={Paper} sx={{ mb: 3 }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                          <TableCell sx={{ fontWeight: 'bold' }}>Tipo de Título</TableCell>
+                          <TableCell align="center" sx={{ fontWeight: 'bold' }}>Pendentes</TableCell>
+                          <TableCell align="center" sx={{ fontWeight: 'bold' }}>Pagos</TableCell>
+                          <TableCell align="center" sx={{ fontWeight: 'bold' }}>Total</TableCell>
+                          <TableCell align="center" sx={{ fontWeight: 'bold' }}>Percentual</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {calcularResumoGeral().map((resumo, index) => (
+                          <TableRow key={resumo.tipo} sx={{ '&:nth-of-type(odd)': { backgroundColor: '#fafafa' } }}>
+                            <TableCell sx={{ fontWeight: 'bold' }}>
+                              {resumo.tipo}
+                            </TableCell>
+                            <TableCell align="center">
+                              <Typography variant="body2">
+                                {resumo.pendente.quantidade} | R$ {formatarDecimal(resumo.pendente.valor)}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="center">
+                              <Typography variant="body2">
+                                {resumo.pago.quantidade} | R$ {formatarDecimal(resumo.pago.valor)}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="center">
+                              <Typography variant="body2">
+                                {resumo.total.quantidade} | R$ {formatarDecimal(resumo.total.valor)}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="center">
+                              <Typography variant="body2">
+                                {resumo.percentual.toFixed(1)}%
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        
+                        {/* Linha de Total Geral */}
+                        {calcularResumoGeral().length > 0 && (
+                          <TableRow sx={{ backgroundColor: '#e3f2fd', fontWeight: 'bold' }}>
+                            <TableCell sx={{ fontWeight: 'bold', fontSize: '1.1em' }}>
+                              TOTAL GERAL
+                            </TableCell>
+                            <TableCell align="center">
+                              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                {calcularResumoGeral().reduce((acc, resumo) => acc + resumo.pendente.quantidade, 0)} | R$ {formatarDecimal(calcularResumoGeral().reduce((acc, resumo) => acc + resumo.pendente.valor, 0))}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="center">
+                              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                {calcularResumoGeral().reduce((acc, resumo) => acc + resumo.pago.quantidade, 0)} | R$ {formatarDecimal(calcularResumoGeral().reduce((acc, resumo) => acc + resumo.pago.valor, 0))}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="center">
+                              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                {calcularResumoGeral().reduce((acc, resumo) => acc + resumo.total.quantidade, 0)} | R$ {formatarDecimal(calcularResumoGeral().reduce((acc, resumo) => acc + resumo.total.valor, 0))}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="center">
+                              <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '1.1em' }}>
+                                100.0%
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+
                 {/* Seleção de Filiais */}
                 <Box>
                   <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>

@@ -533,10 +533,10 @@ const EmissaoTitulos: React.FC = () => {
       return;
     }
 
-    // Verificar se todas as filiais estão selecionadas
-    const todasFiliaisSelecionadas = configRelatorioTabulado.filiaisSelecionadas.length === filiais.length;
+    // Verificar se mais de uma filial está selecionada
+    const multiplasFilialsSelecionadas = configRelatorioTabulado.filiaisSelecionadas.length > 1;
     
-    if (todasFiliaisSelecionadas) {
+    if (multiplasFilialsSelecionadas) {
       // Calcular dados para cada filial separadamente
       const dadosFiliais: {[filialId: number]: DadosTabulados[]} = {};
       const filiaisSelecionadas = filiais.filter(f => configRelatorioTabulado.filiaisSelecionadas.includes(f.id));
@@ -1517,7 +1517,7 @@ const EmissaoTitulos: React.FC = () => {
 
               {/* Verificar se é visualização por filial ou consolidada */}
               {Object.keys(dadosPorFilial).length > 0 ? (
-                // Visualização por filial (quando todas as filiais estão selecionadas)
+                // Visualização por filial (quando múltiplas filiais estão selecionadas)
                 <Box>
                   {/* Abas das Filiais */}
                   <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
@@ -1670,7 +1670,7 @@ const EmissaoTitulos: React.FC = () => {
                   )}
                 </Box>
               ) : (
-                // Visualização consolidada (quando filiais específicas estão selecionadas)
+                // Visualização consolidada (quando apenas uma filial está selecionada)
                 <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
                   <Table size="small" stickyHeader>
                     <TableHead>
@@ -1828,7 +1828,7 @@ const EmissaoTitulos: React.FC = () => {
                 Voltar à Configuração
               </Button>
               {Object.keys(dadosPorFilial).length > 0 ? (
-                // Botões para visualização por filial (todas as filiais selecionadas)
+                // Botões para visualização por filial (múltiplas filiais selecionadas)
                 <>
                   <Button 
                     variant="outlined"
@@ -1836,7 +1836,9 @@ const EmissaoTitulos: React.FC = () => {
                     onClick={() => handleGerarPDFTabulado()}
                     color="primary"
                   >
-                    PDF Todas as Filiais (Meia A4)
+                    {configRelatorioTabulado.filiaisSelecionadas.length === filiais.length 
+                      ? 'PDF Todas as Filiais (Meia A4)' 
+                      : 'PDF das Filiais Selecionadas (Meia A4)'}
                   </Button>
                   <Button 
                     variant="contained"

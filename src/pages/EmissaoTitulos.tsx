@@ -81,12 +81,6 @@ interface TituloCompleto extends Titulo {
   juros?: number;
 }
 
-interface RelatorioTabuladoConfig {
-  filiaisSelecionadas: number[];
-  dataInicial: string;
-  dataFinal: string;
-}
-
 interface DadosTabulados {
   tipo: string;
   pendente: { quantidade: number; valor: number };
@@ -123,17 +117,18 @@ const EmissaoTitulos: React.FC = () => {
   const [modalEdicao, setModalEdicao] = useState(false);
   const [tituloEdicao, setTituloEdicao] = useState<TituloCompleto | null>(null);
   
-  // Estados para o relatório tabulado
+  // Estados para o modal de relatório tabulado
   const [modalRelatorioTabulado, setModalRelatorioTabulado] = useState(false);
-  const [configRelatorioTabulado, setConfigRelatorioTabulado] = useState<RelatorioTabuladoConfig>({
-    filiaisSelecionadas: [],
+  const [mostrarDadosNoModal, setMostrarDadosNoModal] = useState(false);
+  const [dadosTabulados, setDadosTabulados] = useState<any[]>([]);
+  const [dadosPorFilial, setDadosPorFilial] = useState<any>({});
+  const [filialAtiva, setFilialAtiva] = useState(0);
+  const [configRelatorioTabulado, setConfigRelatorioTabulado] = useState({
+    filiais: [] as number[],
+    filiaisSelecionadas: [] as number[],
     dataInicial: '',
     dataFinal: ''
   });
-  const [dadosTabulados, setDadosTabulados] = useState<DadosTabulados[]>([]);
-  const [mostrarDadosNoModal, setMostrarDadosNoModal] = useState(false);
-  const [dadosPorFilial, setDadosPorFilial] = useState<{[filialId: number]: DadosTabulados[]}>({});
-  const [filialAtiva, setFilialAtiva] = useState<number>(0);
   
   
 
@@ -210,15 +205,6 @@ const EmissaoTitulos: React.FC = () => {
       console.log('Quantidade de títulos formatados:', titulosFormatados.length);
       
       setTitulos(titulosFormatados);
-      // Aplicar filtros iniciais (por padrão, só mostra pendentes) e ordenar
-      const titulosPendentes = titulosFormatados
-        .filter(titulo => titulo.status !== 'pago')
-        .sort((a, b) => {
-          const dataA = new Date(a.vencimento);
-          const dataB = new Date(b.vencimento);
-          return dataA.getTime() - dataB.getTime();
-        });
-      setTitulosFiltrados(titulosPendentes);
       
       console.log('Estado atualizado com', titulosFormatados.length, 'títulos');
       console.log('=== FIM DEBUG EMISSAO TITULOS ===');
@@ -262,10 +248,17 @@ const EmissaoTitulos: React.FC = () => {
     };
   }, []);
 
+  // Aplicar filtros sempre que os títulos ou filtros mudarem
+  useEffect(() => {
+    if (titulos.length > 0) {
+      aplicarFiltros(filtros, filtroTipo, mostrarPagos);
+    }
+  }, [titulos, filtros, filtroTipo, mostrarPagos]);
+
   const handleFiltroChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const novosFiltros = { ...filtros, [e.target.name]: e.target.value };
     setFiltros(novosFiltros);
-    aplicarFiltros(novosFiltros, filtroTipo, mostrarPagos);
+    // O useEffect vai aplicar os filtros automaticamente
   };
 
   const handleFiltroTipoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -284,13 +277,13 @@ const EmissaoTitulos: React.FC = () => {
     }
     
     setFiltroTipo(novoFiltroTipo);
-    aplicarFiltros(filtros, novoFiltroTipo, mostrarPagos);
+    // O useEffect vai aplicar os filtros automaticamente
   };
 
   const handleMostrarPagosChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const novoMostrarPagos = e.target.checked;
     setMostrarPagos(novoMostrarPagos);
-    aplicarFiltros(filtros, filtroTipo, novoMostrarPagos);
+    // O useEffect vai aplicar os filtros automaticamente
   };
 
   const aplicarFiltros = (filtrosAtuais = filtros, tiposFiltro = filtroTipo, incluirPagos = mostrarPagos) => {
@@ -376,190 +369,15 @@ const EmissaoTitulos: React.FC = () => {
     setPaginaAtual(1);
   };
 
-  // Função para calcular dados tabulados por filial específica
-  const calcularDadosTabuladosPorFilial = (filialId: number): DadosTabulados[] => {
-    // Filtrar títulos por filial específica e período
-    const titulosFiltradosFilial = titulos.filter(titulo => {
-      // Filtro por filial específica
-      const filialValida = titulo.filial_id === filialId;
-      
-      // Filtro por período
-      let periodoValido = true;
-      if (configRelatorioTabulado.dataInicial && configRelatorioTabulado.dataFinal) {
-        const dataInicio = new Date(configRelatorioTabulado.dataInicial + 'T00:00:00');
-        const dataFim = new Date(configRelatorioTabulado.dataFinal + 'T23:59:59');
-        const dataVencimento = new Date(titulo.vencimento);
-        periodoValido = dataVencimento >= dataInicio && dataVencimento <= dataFim;
-      }
-      
-      return filialValida && periodoValido;
-    });
 
-    // Agrupar por tipo
+  // Função para calcular resumo dinâmico baseado nos filtros atuais
+  const calcularResumoDinamico = (): DadosTabulados[] => {
+    // Usar os títulos já filtrados (incluindo filtro de data)
+    const titulosParaResumo = titulosFiltrados;
+
+    // Agrupar títulos por tipo
     const agrupamentoPorTipo: { [tipo: string]: TituloCompleto[] } = {};
-    titulosFiltradosFilial.forEach(titulo => {
-      const tipo = titulo.tipo || 'Não especificado';
-      if (!agrupamentoPorTipo[tipo]) {
-        agrupamentoPorTipo[tipo] = [];
-      }
-      agrupamentoPorTipo[tipo].push(titulo);
-    });
-
-    // Calcular totais gerais da filial para percentuais com validação monetária
-    const totalGeralValorFilial = titulosFiltradosFilial.reduce((total, titulo) => {
-      const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
-        parseDecimalSeguro(titulo.valor || '0') : 0;
-      return parseDecimalSeguro(somarValores(total, valorValidado));
-    }, 0);
-
-    // Criar lista de todos os tipos (incluindo os sem dados)
-    const todosOsTipos = tipos.map(t => t.nome);
-    
-    // Processar cada tipo (incluindo os que não têm títulos)
-    const dadosTabulados: DadosTabulados[] = todosOsTipos.map(tipo => {
-      const titulosDoTipo = agrupamentoPorTipo[tipo] || [];
-      
-      const titulosPagos = titulosDoTipo.filter(t => t.status === 'pago');
-      const titulosPendentes = titulosDoTipo.filter(t => t.status !== 'pago');
-      
-      // Calcular valores com validação monetária rigorosa
-      const valorPago = titulosPagos.reduce((total, titulo) => {
-        const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
-          parseDecimalSeguro(titulo.valor || '0') : 0;
-        return parseDecimalSeguro(somarValores(total, valorValidado));
-      }, 0);
-      
-      const valorPendente = titulosPendentes.reduce((total, titulo) => {
-        const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
-          parseDecimalSeguro(titulo.valor || '0') : 0;
-        return parseDecimalSeguro(somarValores(total, valorValidado));
-      }, 0);
-      
-      const valorTotal = parseDecimalSeguro(somarValores(valorPago, valorPendente));
-      
-      return {
-        tipo,
-        pendente: {
-          quantidade: titulosPendentes.length,
-          valor: valorPendente
-        },
-        pago: {
-          quantidade: titulosPagos.length,
-          valor: valorPago
-        },
-        total: {
-          quantidade: titulosDoTipo.length,
-          valor: valorTotal
-        },
-        percentual: totalGeralValorFilial > 0 ? 
-          parseDecimalSeguro((valorTotal / totalGeralValorFilial) * 100) : 0
-      };
-    });
-
-    // Ordenar por valor total (maior para menor), mas manter tipos com valor 0 no final
-    return dadosTabulados.sort((a, b) => {
-      if (a.total.valor === 0 && b.total.valor === 0) return a.tipo.localeCompare(b.tipo);
-      if (a.total.valor === 0) return 1;
-      if (b.total.valor === 0) return -1;
-      return b.total.valor - a.total.valor;
-    });
-  };
-
-  // Função para calcular dados tabulados por tipo
-  const calcularDadosTabulados = (config: RelatorioTabuladoConfig): DadosTabulados[] => {
-    // Filtrar títulos por filiais selecionadas e período
-    const titulosFiltradosRelatorio = titulos.filter(titulo => {
-      // Filtro por filiais
-      const filialValida = config.filiaisSelecionadas.length === 0 || 
-                          config.filiaisSelecionadas.includes(titulo.filial_id || 0);
-      
-      // Filtro por período
-      let periodoValido = true;
-      if (config.dataInicial && config.dataFinal) {
-        const dataInicio = new Date(config.dataInicial + 'T00:00:00');
-        const dataFim = new Date(config.dataFinal + 'T23:59:59');
-        const dataVencimento = new Date(titulo.vencimento);
-        periodoValido = dataVencimento >= dataInicio && dataVencimento <= dataFim;
-      }
-      
-      return filialValida && periodoValido;
-    });
-
-    // Agrupar por tipo
-    const agrupamentoPorTipo: { [tipo: string]: TituloCompleto[] } = {};
-    titulosFiltradosRelatorio.forEach(titulo => {
-      const tipo = titulo.tipo || 'Não especificado';
-      if (!agrupamentoPorTipo[tipo]) {
-        agrupamentoPorTipo[tipo] = [];
-      }
-      agrupamentoPorTipo[tipo].push(titulo);
-    });
-
-    // Calcular totais gerais para percentuais com validação monetária
-    const totalGeralValor = titulosFiltradosRelatorio.reduce((total, titulo) => {
-      const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
-        parseDecimalSeguro(titulo.valor || '0') : 0;
-      return parseDecimalSeguro(somarValores(total, valorValidado));
-    }, 0);
-
-    // Criar lista de todos os tipos (incluindo os sem dados)
-    const todosOsTipos = tipos.map(t => t.nome);
-    
-    // Processar cada tipo (incluindo os que não têm títulos)
-    const dadosTabulados: DadosTabulados[] = todosOsTipos.map(tipo => {
-      const titulosDoTipo = agrupamentoPorTipo[tipo] || [];
-      
-      const titulosPagos = titulosDoTipo.filter(t => t.status === 'pago');
-      const titulosPendentes = titulosDoTipo.filter(t => t.status !== 'pago');
-      
-      // Calcular valores com validação monetária rigorosa
-      const valorPago = titulosPagos.reduce((total, titulo) => {
-        const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
-          parseDecimalSeguro(titulo.valor || '0') : 0;
-        return parseDecimalSeguro(somarValores(total, valorValidado));
-      }, 0);
-      
-      const valorPendente = titulosPendentes.reduce((total, titulo) => {
-        const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
-          parseDecimalSeguro(titulo.valor || '0') : 0;
-        return parseDecimalSeguro(somarValores(total, valorValidado));
-      }, 0);
-      
-      const valorTotal = parseDecimalSeguro(somarValores(valorPago, valorPendente));
-      
-      return {
-        tipo,
-        pendente: {
-          quantidade: titulosPendentes.length,
-          valor: valorPendente
-        },
-        pago: {
-          quantidade: titulosPagos.length,
-          valor: valorPago
-        },
-        total: {
-          quantidade: titulosDoTipo.length,
-          valor: valorTotal
-        },
-        percentual: totalGeralValor > 0 ? 
-          parseDecimalSeguro((valorTotal / totalGeralValor) * 100) : 0
-      };
-    });
-
-    // Ordenar por valor total (maior para menor), mas manter tipos com valor 0 no final
-    return dadosTabulados.sort((a, b) => {
-      if (a.total.valor === 0 && b.total.valor === 0) return a.tipo.localeCompare(b.tipo);
-      if (a.total.valor === 0) return 1;
-      if (b.total.valor === 0) return -1;
-      return b.total.valor - a.total.valor;
-    });
-  };
-
-  // Função para calcular resumo geral de todos os títulos
-  const calcularResumoGeral = (): DadosTabulados[] => {
-    // Agrupar todos os títulos por tipo
-    const agrupamentoPorTipo: { [tipo: string]: TituloCompleto[] } = {};
-    titulos.forEach(titulo => {
+    titulosParaResumo.forEach(titulo => {
       const tipo = titulo.tipo || 'Não especificado';
       if (!agrupamentoPorTipo[tipo]) {
         agrupamentoPorTipo[tipo] = [];
@@ -568,7 +386,7 @@ const EmissaoTitulos: React.FC = () => {
     });
 
     // Calcular total geral para percentuais com validação monetária
-    const totalGeralValor = titulos.reduce((total, titulo) => {
+    const totalGeralValor = titulosParaResumo.reduce((total, titulo) => {
       const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
         parseDecimalSeguro(titulo.valor || '0') : 0;
       return parseDecimalSeguro(somarValores(total, valorValidado));
@@ -627,318 +445,79 @@ const EmissaoTitulos: React.FC = () => {
     });
   };
 
-  // Função para gerar relatório tabulado
-  const handleGerarRelatorioTabulado = () => {
-    if (configRelatorioTabulado.filiaisSelecionadas.length === 0) {
-      setAlert({
-        open: true,
-        message: 'Selecione pelo menos uma filial para gerar o relatório.',
-        severity: 'warning'
-      });
-      return;
-    }
+  // Função para calcular resumo geral usando apenas títulos filtrados
+  const calcularResumoGeral = (): DadosTabulados[] => {
+    // Agrupar títulos FILTRADOS por tipo
+    const agrupamentoPorTipo: { [tipo: string]: TituloCompleto[] } = {};
+    titulosFiltrados.forEach(titulo => {
+      const tipo = titulo.tipo || 'Não especificado';
+      if (!agrupamentoPorTipo[tipo]) {
+        agrupamentoPorTipo[tipo] = [];
+      }
+      agrupamentoPorTipo[tipo].push(titulo);
+    });
 
-    if (!configRelatorioTabulado.dataInicial || !configRelatorioTabulado.dataFinal) {
-      setAlert({
-        open: true,
-        message: 'Selecione o período (data inicial e final) para gerar o relatório.',
-        severity: 'warning'
-      });
-      return;
-    }
+    // Calcular total geral para percentuais usando títulos FILTRADOS
+    const totalGeralValor = titulosFiltrados.reduce((total, titulo) => {
+      const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
+        parseDecimalSeguro(titulo.valor || '0') : 0;
+      return parseDecimalSeguro(somarValores(total, valorValidado));
+    }, 0);
 
-    // Verificar se mais de uma filial está selecionada
-    const multiplasFilialsSelecionadas = configRelatorioTabulado.filiaisSelecionadas.length > 1;
+    // Criar lista de todos os tipos (incluindo os sem dados)
+    const todosOsTipos = tipos.map(t => t.nome);
     
-    if (multiplasFilialsSelecionadas) {
-      // Calcular dados para cada filial separadamente
-      const dadosFiliais: {[filialId: number]: DadosTabulados[]} = {};
-      const filiaisSelecionadas = filiais.filter(f => configRelatorioTabulado.filiaisSelecionadas.includes(f.id));
+    // Processar cada tipo
+    const dadosResumo: DadosTabulados[] = todosOsTipos.map(tipo => {
+      const titulosDoTipo = agrupamentoPorTipo[tipo] || [];
       
-      filiaisSelecionadas.forEach(filial => {
-        dadosFiliais[filial.id] = calcularDadosTabuladosPorFilial(filial.id);
-      });
+      const titulosPagos = titulosDoTipo.filter(t => t.status === 'pago');
+      const titulosPendentes = titulosDoTipo.filter(t => t.status !== 'pago');
       
-      setDadosPorFilial(dadosFiliais);
-      setFilialAtiva(filiaisSelecionadas[0]?.id || 0);
-      setDadosTabulados([]); // Limpar dados consolidados
-    } else {
-      // Calcular dados consolidados (comportamento anterior)
-      const dados = calcularDadosTabulados(configRelatorioTabulado);
-      setDadosTabulados(dados);
-      setDadosPorFilial({}); // Limpar dados por filial
-    }
-    
-    setMostrarDadosNoModal(true);
-    
-    setAlert({
-      open: true,
-      message: 'Relatório tabulado gerado com sucesso!',
-      severity: 'success'
+      // Calcular valores com validação monetária rigorosa
+      const valorPago = titulosPagos.reduce((total, titulo) => {
+        const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
+          parseDecimalSeguro(titulo.valor || '0') : 0;
+        return parseDecimalSeguro(somarValores(total, valorValidado));
+      }, 0);
+      
+      const valorPendente = titulosPendentes.reduce((total, titulo) => {
+        const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
+          parseDecimalSeguro(titulo.valor || '0') : 0;
+        return parseDecimalSeguro(somarValores(total, valorValidado));
+      }, 0);
+      
+      const valorTotal = parseDecimalSeguro(somarValores(valorPago, valorPendente));
+      
+      return {
+        tipo,
+        pendente: {
+          quantidade: titulosPendentes.length,
+          valor: valorPendente
+        },
+        pago: {
+          quantidade: titulosPagos.length,
+          valor: valorPago
+        },
+        total: {
+          quantidade: titulosDoTipo.length,
+          valor: valorTotal
+        },
+        percentual: totalGeralValor > 0 ? 
+          parseDecimalSeguro((valorTotal / totalGeralValor) * 100) : 0
+      };
+    });
+
+    // Ordenar por valor total (maior para menor), mas manter tipos com valor 0 no final
+    return dadosResumo.sort((a, b) => {
+      if (a.total.valor === 0 && b.total.valor === 0) return a.tipo.localeCompare(b.tipo);
+      if (a.total.valor === 0) return 1;
+      if (b.total.valor === 0) return -1;
+      return b.total.valor - a.total.valor;
     });
   };
 
-  // Função para gerar PDF do relatório tabulado
-  const handleGerarPDFTabulado = (tipoEspecifico?: string) => {
-    try {
-      import('jspdf').then(({ default: jsPDF }) => {
-        const doc = new jsPDF();
-        const pageWidth = doc.internal.pageSize.width;
-        const pageHeight = doc.internal.pageSize.height;
-        const margin = 15;
-        
-        // Verificar se todas as filiais estão selecionadas e não é tipo específico
-        const todasFiliaisSelecionadas = configRelatorioTabulado.filiaisSelecionadas.length === filiais.length;
-        const filiaisSelecionadas = filiais.filter(f => configRelatorioTabulado.filiaisSelecionadas.includes(f.id));
-        
-        if (todasFiliaisSelecionadas && !tipoEspecifico) {
-          // Gerar relatório separado para cada filial em meia folha A4
-          filiaisSelecionadas.forEach((filial, filialIndex) => {
-            // Calcular dados específicos da filial
-            const dadosFilial = calcularDadosTabuladosPorFilial(filial.id);
-            
-            // Posição Y inicial (meia folha A4)
-            let yPosition = filialIndex === 0 ? 20 : (filialIndex % 2 === 0 ? 20 : pageHeight / 2 + 10);
-            
-            // Adicionar nova página a cada 2 filiais
-            if (filialIndex > 0 && filialIndex % 2 === 0) {
-              doc.addPage();
-              yPosition = 20;
-            }
-            
-            // Título da filial
-            doc.setFontSize(12);
-            doc.setFont('helvetica', 'bold');
-            doc.text(`Relatório Tabulado - ${filial.nome}`, pageWidth / 2, yPosition, { align: 'center' });
-            
-            yPosition += 10;
-            
-            // Período
-            doc.setFontSize(8);
-            doc.setFont('helvetica', 'normal');
-            const periodo = `Período: ${configRelatorioTabulado.dataInicial?.split('-').reverse().join('/')} a ${configRelatorioTabulado.dataFinal?.split('-').reverse().join('/')}`;
-            doc.text(periodo, pageWidth / 2, yPosition, { align: 'center' });
-            
-            yPosition += 12;
-            
-            // Cabeçalho da tabela (compacto)
-            doc.setFontSize(7);
-            doc.setFont('helvetica', 'bold');
-            doc.text('Tipo', margin, yPosition);
-            doc.text('P.Qtd', margin + 35, yPosition);
-            doc.text('P.Valor', margin + 50, yPosition);
-            doc.text('Pg.Qtd', margin + 75, yPosition);
-            doc.text('Pg.Valor', margin + 90, yPosition);
-            doc.text('T.Qtd', margin + 115, yPosition);
-            doc.text('T.Valor', margin + 130, yPosition);
-            doc.text('%', margin + 155, yPosition);
-            
-            yPosition += 3;
-            doc.line(margin, yPosition, pageWidth - margin, yPosition);
-            yPosition += 5;
-            
-            // Dados da filial
-            doc.setFont('helvetica', 'normal');
-            dadosFilial.forEach(dado => {
-              if (yPosition > (filialIndex % 2 === 0 ? pageHeight / 2 - 20 : pageHeight - 20)) {
-                return; // Não exceder o espaço da meia folha
-              }
-              
-              doc.text(dado.tipo.substring(0, 12), margin, yPosition);
-              doc.text(dado.pendente.quantidade.toString(), margin + 35, yPosition);
-              doc.text(`${formatarDecimal(dado.pendente.valor)}`, margin + 50, yPosition);
-              doc.text(dado.pago.quantidade.toString(), margin + 75, yPosition);
-              doc.text(`${formatarDecimal(dado.pago.valor)}`, margin + 90, yPosition);
-              doc.text(dado.total.quantidade.toString(), margin + 115, yPosition);
-              doc.text(`${formatarDecimal(dado.total.valor)}`, margin + 130, yPosition);
-              doc.text(`${dado.percentual.toFixed(1)}%`, margin + 155, yPosition);
-              
-              yPosition += 6;
-            });
-            
-            // Total da filial
-            if (dadosFilial.length > 0) {
-              yPosition += 2;
-              doc.line(margin, yPosition, pageWidth - margin, yPosition);
-              yPosition += 5;
-              
-              const totalFilial = dadosFilial.reduce((acc, dado) => ({
-                pendente: { 
-                  quantidade: acc.pendente.quantidade + dado.pendente.quantidade,
-                  valor: acc.pendente.valor + dado.pendente.valor 
-                },
-                pago: { 
-                  quantidade: acc.pago.quantidade + dado.pago.quantidade,
-                  valor: acc.pago.valor + dado.pago.valor 
-                },
-                total: { 
-                  quantidade: acc.total.quantidade + dado.total.quantidade,
-                  valor: acc.total.valor + dado.total.valor 
-                }
-              }), {
-                pendente: { quantidade: 0, valor: 0 },
-                pago: { quantidade: 0, valor: 0 },
-                total: { quantidade: 0, valor: 0 }
-              });
-              
-              doc.setFont('helvetica', 'bold');
-              doc.text('TOTAL', margin, yPosition);
-              doc.text(totalFilial.pendente.quantidade.toString(), margin + 35, yPosition);
-              doc.text(`${formatarDecimal(totalFilial.pendente.valor)}`, margin + 50, yPosition);
-              doc.text(totalFilial.pago.quantidade.toString(), margin + 75, yPosition);
-              doc.text(`${formatarDecimal(totalFilial.pago.valor)}`, margin + 90, yPosition);
-              doc.text(totalFilial.total.quantidade.toString(), margin + 115, yPosition);
-              doc.text(`${formatarDecimal(totalFilial.total.valor)}`, margin + 130, yPosition);
-              doc.text('100%', margin + 155, yPosition);
-            }
-            
-            // Linha separadora entre filiais (se não for a última)
-            if (filialIndex < filiaisSelecionadas.length - 1 && filialIndex % 2 === 0) {
-              const separatorY = pageHeight / 2;
-              doc.setDrawColor(200, 200, 200);
-              doc.line(margin, separatorY, pageWidth - margin, separatorY);
-              doc.setDrawColor(0, 0, 0);
-            }
-          });
-          
-          // Salvar
-          const nomeArquivo = `relatorio-tabulado-por-filial-${configRelatorioTabulado.dataInicial}.pdf`;
-          doc.save(nomeArquivo);
-          
-          setAlert({
-            open: true,
-            message: `PDF com relatório de ${filiaisSelecionadas.length} filiais gerado com sucesso!`,
-            severity: 'success'
-          });
-          
-        } else {
-          // Relatório normal (tipo específico ou filiais específicas)
-          let yPosition = 30;
-          
-          // Título
-          doc.setFontSize(16);
-          doc.setFont('helvetica', 'bold');
-          const titulo = tipoEspecifico ? 
-            `Relatório Tabulado - ${tipoEspecifico}` : 
-            'Relatório Tabulado por Tipo de Título';
-          doc.text(titulo, pageWidth / 2, yPosition, { align: 'center' });
-          
-          yPosition += 15;
 
-          // Período e filiais
-          doc.setFontSize(10);
-          doc.setFont('helvetica', 'normal');
-          const periodo = `Período: ${configRelatorioTabulado.dataInicial?.split('-').reverse().join('/')} a ${configRelatorioTabulado.dataFinal?.split('-').reverse().join('/')}`;
-          doc.text(periodo, pageWidth / 2, yPosition, { align: 'center' });
-          
-          yPosition += 8;
-          
-          const filiaisNomes = filiais
-            .filter(f => configRelatorioTabulado.filiaisSelecionadas.includes(f.id))
-            .map(f => f.nome)
-            .join(', ');
-          doc.text(`Filiais: ${filiaisNomes}`, pageWidth / 2, yPosition, { align: 'center' });
-          
-          yPosition += 20;
-
-          // Cabeçalho da tabela
-          doc.setFontSize(8);
-          doc.setFont('helvetica', 'bold');
-          doc.text('Tipo', margin, yPosition);
-          doc.text('Pend.Qtd', margin + 40, yPosition);
-          doc.text('Pend.Valor', margin + 60, yPosition);
-          doc.text('Pago Qtd', margin + 85, yPosition);
-          doc.text('Pago Valor', margin + 105, yPosition);
-          doc.text('Total Qtd', margin + 130, yPosition);
-          doc.text('Total Valor', margin + 150, yPosition);
-          doc.text('%', margin + 175, yPosition);
-          
-          yPosition += 5;
-          doc.line(margin, yPosition, pageWidth - margin, yPosition);
-          yPosition += 8;
-
-          // Dados
-          const dadosParaPDF = tipoEspecifico ? 
-            dadosTabulados.filter(d => d.tipo === tipoEspecifico) : 
-            dadosTabulados;
-
-          doc.setFont('helvetica', 'normal');
-          dadosParaPDF.forEach(dado => {
-            if (yPosition > 250) {
-              doc.addPage();
-              yPosition = 30;
-            }
-
-            doc.text(dado.tipo.substring(0, 15), margin, yPosition);
-            doc.text(dado.pendente.quantidade.toString(), margin + 40, yPosition);
-            doc.text(`R$ ${formatarDecimal(dado.pendente.valor)}`, margin + 60, yPosition);
-            doc.text(dado.pago.quantidade.toString(), margin + 85, yPosition);
-            doc.text(`R$ ${formatarDecimal(dado.pago.valor)}`, margin + 105, yPosition);
-            doc.text(dado.total.quantidade.toString(), margin + 130, yPosition);
-            doc.text(`R$ ${formatarDecimal(dado.total.valor)}`, margin + 150, yPosition);
-            doc.text(`${dado.percentual.toFixed(1)}%`, margin + 175, yPosition);
-            
-            yPosition += 8;
-          });
-
-          // Total geral (se não for tipo específico)
-          if (!tipoEspecifico && dadosTabulados.length > 0) {
-            yPosition += 5;
-            doc.line(margin, yPosition, pageWidth - margin, yPosition);
-            yPosition += 8;
-            
-            const totalGeral = dadosTabulados.reduce((acc, dado) => ({
-              pendente: { 
-                quantidade: acc.pendente.quantidade + dado.pendente.quantidade,
-                valor: acc.pendente.valor + dado.pendente.valor 
-              },
-              pago: { 
-                quantidade: acc.pago.quantidade + dado.pago.quantidade,
-                valor: acc.pago.valor + dado.pago.valor 
-              },
-              total: { 
-                quantidade: acc.total.quantidade + dado.total.quantidade,
-                valor: acc.total.valor + dado.total.valor 
-              }
-            }), {
-              pendente: { quantidade: 0, valor: 0 },
-              pago: { quantidade: 0, valor: 0 },
-              total: { quantidade: 0, valor: 0 }
-            });
-
-            doc.setFont('helvetica', 'bold');
-            doc.text('TOTAL GERAL', margin, yPosition);
-            doc.text(totalGeral.pendente.quantidade.toString(), margin + 40, yPosition);
-            doc.text(`R$ ${formatarDecimal(totalGeral.pendente.valor)}`, margin + 60, yPosition);
-            doc.text(totalGeral.pago.quantidade.toString(), margin + 85, yPosition);
-            doc.text(`R$ ${formatarDecimal(totalGeral.pago.valor)}`, margin + 105, yPosition);
-            doc.text(totalGeral.total.quantidade.toString(), margin + 130, yPosition);
-            doc.text(`R$ ${formatarDecimal(totalGeral.total.valor)}`, margin + 150, yPosition);
-            doc.text('100%', margin + 175, yPosition);
-          }
-
-          // Salvar
-          const nomeArquivo = tipoEspecifico ? 
-            `relatorio-tabulado-${tipoEspecifico.replace(/\s+/g, '-')}-${configRelatorioTabulado.dataInicial}.pdf` :
-            `relatorio-tabulado-geral-${configRelatorioTabulado.dataInicial}.pdf`;
-          doc.save(nomeArquivo);
-
-          setAlert({
-            open: true,
-            message: `PDF ${tipoEspecifico ? 'do tipo ' + tipoEspecifico : 'geral'} gerado com sucesso!`,
-            severity: 'success'
-          });
-        }
-      });
-    } catch (error) {
-      console.error('Erro ao gerar PDF tabulado:', error);
-      setAlert({
-        open: true,
-        message: 'Erro ao gerar PDF. Tente novamente.',
-        severity: 'error'
-      });
-    }
-  };
 
 
   // Funções para ações
@@ -1310,6 +889,214 @@ const EmissaoTitulos: React.FC = () => {
     setAlert({ ...alert, open: false });
   };
 
+  // Função para gerar relatório tabulado
+  const handleGerarRelatorioTabulado = () => {
+    setMostrarDadosNoModal(true);
+  };
+
+  // Função para gerar PDF tabulado
+  const handleGerarPDFTabulado = (tipo?: string) => {
+    console.log('Gerando PDF tabulado...', tipo ? `para tipo: ${tipo}` : 'geral');
+    // Implementação futura para gerar PDF
+    // Se tipo for fornecido, gerar PDF específico para esse tipo
+    // Caso contrário, gerar PDF geral
+  };
+
+  // Função para calcular totais gerais (sem filtro de data) para comparação
+  const calcularTotaisGerais = () => {
+    let titulosTotais = [...titulos];
+    
+    // Aplicar apenas filtros de filial, fornecedor e tipo (sem data)
+    if (filtros.filial) {
+      titulosTotais = titulosTotais.filter(titulo => titulo.filial === filtros.filial);
+    }
+    if (filtros.fornecedor) {
+      titulosTotais = titulosTotais.filter(titulo => titulo.fornecedor === filtros.fornecedor);
+    }
+    if (filtros.tipo) {
+      titulosTotais = titulosTotais.filter(titulo => titulo.tipo === filtros.tipo);
+    }
+    if (!mostrarPagos) {
+      titulosTotais = titulosTotais.filter(titulo => titulo.status !== 'pago');
+    }
+
+    const totalQuantidade = titulosTotais.length;
+    const totalValor = titulosTotais.reduce((total, titulo) => {
+      const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
+        parseDecimalSeguro(titulo.valor || '0') : 0;
+      return parseDecimalSeguro(somarValores(total, valorValidado));
+    }, 0);
+
+    return { quantidade: totalQuantidade, valor: totalValor };
+  };
+
+  // Função para calcular totais filtrados (com filtro de data)
+  const calcularTotaisFiltrados = () => {
+    const totalQuantidade = titulosFiltrados.length;
+    const totalValor = titulosFiltrados.reduce((total, titulo) => {
+      const valorValidado = validarValorMonetario(titulo.valor || '0') ? 
+        parseDecimalSeguro(titulo.valor || '0') : 0;
+      return parseDecimalSeguro(somarValores(total, valorValidado));
+    }, 0);
+
+    return { quantidade: totalQuantidade, valor: totalValor };
+  };
+
+  // Função para calcular breakdown mensal por filial
+  const calcularBreakdownMensal = () => {
+    if (!filtros.dataInicial || !filtros.dataFinal || filtroTipo.todos) {
+      return [];
+    }
+
+    // Debug: calculando breakdown mensal para o período selecionado
+
+    // Agrupar títulos filtrados por filial e mês
+    const dadosAgrupados: { [filial: string]: { [mesAno: string]: TituloCompleto[] } } = {};
+
+    titulosFiltrados.forEach(titulo => {
+      const filial = titulo.filial;
+      
+      // Criar data de vencimento de forma explícita para evitar problemas de fuso horário
+      const [anoVenc, mesVenc, diaVenc] = titulo.vencimento.split('-').map(Number);
+      const dataVencimento = new Date(anoVenc, mesVenc - 1, diaVenc);
+      const mesAno = `${dataVencimento.getFullYear()}-${String(dataVencimento.getMonth() + 1).padStart(2, '0')}`;
+
+      // Agrupamento: ${titulo.numero} -> ${filial} (${mesAno})
+
+      if (!dadosAgrupados[filial]) {
+        dadosAgrupados[filial] = {};
+      }
+      if (!dadosAgrupados[filial][mesAno]) {
+        dadosAgrupados[filial][mesAno] = [];
+      }
+
+      dadosAgrupados[filial][mesAno].push(titulo);
+    });
+
+    // Dados agrupados por filial e mês
+
+    // Processar dados para o breakdown
+    const breakdown = Object.keys(dadosAgrupados).map(filialNome => {
+      const mesesFilial = dadosAgrupados[filialNome];
+      const meses: any[] = [];
+
+      // Gerar todos os meses do período - usando split para evitar problemas de fuso horário
+      const [anoInicial, mesInicial, diaInicial] = filtros.dataInicial.split('-').map(Number);
+      const [anoFinal, mesFinal, diaFinal] = filtros.dataFinal.split('-').map(Number);
+      
+      // Criar datas de forma explícita (mês é 0-indexed no JavaScript)
+      const dataInicial = new Date(anoInicial, mesInicial - 1, diaInicial);
+      const dataFinal = new Date(anoFinal, mesFinal - 1, diaFinal);
+      
+      // Período processado: dataInicial até dataFinal
+      
+      // Ajustar para o primeiro dia do mês inicial
+      const mesAtual = new Date(dataInicial.getFullYear(), dataInicial.getMonth(), 1);
+
+      // Ajustar data final para o último dia do mês final
+      const dataFinalAjustada = new Date(dataFinal.getFullYear(), dataFinal.getMonth() + 1, 0);
+      
+      // Processamento de meses do período
+      
+      while (mesAtual <= dataFinalAjustada) {
+        const mesAno = `${mesAtual.getFullYear()}-${String(mesAtual.getMonth() + 1).padStart(2, '0')}`;
+        const titulosDoMes = mesesFilial[mesAno] || [];
+
+        // Agrupar por tipo
+        const tiposMes: { [tipo: string]: { 
+          quantidade: number; 
+          valor: number;
+          pendentes: { quantidade: number; valor: number };
+          pagos: { quantidade: number; valor: number };
+        } } = {};
+        
+        // Inicializar todos os tipos com 0
+        tipos.forEach(tipo => {
+          tiposMes[tipo.nome] = { 
+            quantidade: 0, 
+            valor: 0,
+            pendentes: { quantidade: 0, valor: 0 },
+            pagos: { quantidade: 0, valor: 0 }
+          };
+        });
+
+        // Processar títulos do mês
+        titulosDoMes.forEach(titulo => {
+          const tipo = titulo.tipo;
+          const valor = parseDecimalSeguro(titulo.valor);
+          const isPago = titulo.status === 'pago';
+          
+          if (tiposMes[tipo]) {
+            if (isPago) {
+              tiposMes[tipo].pagos.quantidade += 1;
+              tiposMes[tipo].pagos.valor = parseDecimalSeguro(somarValores(tiposMes[tipo].pagos.valor, valor));
+            } else {
+              tiposMes[tipo].pendentes.quantidade += 1;
+              tiposMes[tipo].pendentes.valor = parseDecimalSeguro(somarValores(tiposMes[tipo].pendentes.valor, valor));
+            }
+            
+            // Manter totais gerais
+            tiposMes[tipo].quantidade += 1;
+            tiposMes[tipo].valor = parseDecimalSeguro(somarValores(tiposMes[tipo].valor, valor));
+          }
+        });
+
+        // Calcular total do mês
+        const totalPendentes = titulosDoMes.filter(t => t.status !== 'pago').length;
+        const totalPagos = titulosDoMes.filter(t => t.status === 'pago').length;
+        const valorPendentes = titulosDoMes
+          .filter(t => t.status !== 'pago')
+          .reduce((total, titulo) => parseDecimalSeguro(somarValores(total, parseDecimalSeguro(titulo.valor))), 0);
+        const valorPagos = titulosDoMes
+          .filter(t => t.status === 'pago')
+          .reduce((total, titulo) => parseDecimalSeguro(somarValores(total, parseDecimalSeguro(titulo.valor))), 0);
+
+        const totalMes = {
+          quantidade: titulosDoMes.length,
+          valor: titulosDoMes.reduce((total, titulo) => 
+            parseDecimalSeguro(somarValores(total, parseDecimalSeguro(titulo.valor))), 0),
+          pendentes: totalPendentes,
+          pagos: totalPagos,
+          valorPendentes: valorPendentes,
+          valorPagos: valorPagos
+        };
+
+        // Formatar nome do mês de forma mais consistente
+        const nomesMeses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+        const nomeMes = `${nomesMeses[mesAtual.getMonth()]}/${mesAtual.getFullYear()}`;
+
+        meses.push({
+          mes: nomeMes,
+          ano: mesAtual.getFullYear(),
+          tipos: tiposMes,
+          total: totalMes
+        });
+
+        // Processando mês: ${nomeMes} com ${titulosDoMes.length} títulos
+
+        mesAtual.setMonth(mesAtual.getMonth() + 1);
+      }
+
+      // Calcular total da filial
+      const totalFilial = {
+        quantidade: meses.reduce((total, mes) => total + mes.total.quantidade, 0),
+        valor: meses.reduce((total, mes) => parseDecimalSeguro(somarValores(total, mes.total.valor)), 0),
+        pendentes: meses.reduce((total, mes) => total + (mes.total.pendentes || 0), 0),
+        pagos: meses.reduce((total, mes) => total + (mes.total.pagos || 0), 0),
+        valorPendentes: meses.reduce((total, mes) => parseDecimalSeguro(somarValores(total, mes.total.valorPendentes || 0)), 0),
+        valorPagos: meses.reduce((total, mes) => parseDecimalSeguro(somarValores(total, mes.total.valorPagos || 0)), 0)
+      };
+
+      return {
+        filial: filialNome,
+        meses,
+        total: totalFilial
+      };
+    });
+
+    return breakdown;
+  };
+
   return (
     <Box sx={{ position: 'relative' }}>
       {/* Loading Overlay */}
@@ -1495,22 +1282,9 @@ const EmissaoTitulos: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Modal de Configuração do Relatório Tabulado */}
-      <Dialog 
-        open={modalRelatorioTabulado} 
-        onClose={() => {
-          setModalRelatorioTabulado(false);
-          setMostrarDadosNoModal(false);
-          setDadosTabulados([]);
-          setDadosPorFilial({});
-          setFilialAtiva(0);
-        }} 
-        maxWidth={mostrarDadosNoModal ? "lg" : "md"} 
-        fullWidth
-      >
-        <DialogTitle>
-          {mostrarDadosNoModal ? "📊 Relatório Tabulado por Tipo de Título" : "Configurar Relatório Tabulado"}
-        </DialogTitle>
+      {/* Modal de relatório tabulado */}
+      <Dialog open={modalRelatorioTabulado} onClose={() => setModalRelatorioTabulado(false)} maxWidth="lg" fullWidth>
+        <DialogTitle>Relatório Tabulado por Tipo de Título</DialogTitle>
         <DialogContent>
           {!mostrarDadosNoModal ? (
             // Tela de configuração
@@ -2279,14 +2053,6 @@ const EmissaoTitulos: React.FC = () => {
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
             <Typography variant="h6">Extrato de Títulos</Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button 
-                variant="outlined" 
-                startIcon={<TableViewIcon />} 
-                onClick={() => setModalRelatorioTabulado(true)}
-                color="secondary"
-              >
-                Relatório Tabulado
-              </Button>
               <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleGerarPDF}>Gerar PDF</Button>
             </Box>
           </Box>
@@ -2310,7 +2076,327 @@ const EmissaoTitulos: React.FC = () => {
             </FormControl>
           </Box>
 
-          <List>
+          {/* Resumo Geral de Títulos por Tipo */}
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', textAlign: 'center' }}>
+              📊 Resumo de Títulos por Tipo {filtros.filial ? `- ${filtros.filial}` : '(Todas as Filiais)'}
+              {(filtros.dataInicial || filtros.dataFinal) && !filtroTipo.todos && (
+                <Typography variant="body2" sx={{ color: 'primary.main', fontWeight: 'normal' }}>
+                  Período: {filtros.dataInicial ? filtros.dataInicial.split('-').reverse().join('/') : '...'} até {filtros.dataFinal ? filtros.dataFinal.split('-').reverse().join('/') : '...'}
+                </Typography>
+              )}
+            </Typography>
+            <TableContainer component={Paper} sx={{ mb: 3 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                    <TableCell sx={{ fontWeight: 'bold' }}>Tipo de Título</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 'bold' }}>Pendentes</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 'bold' }}>Pagos</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 'bold' }}>Total</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 'bold' }}>Percentual</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {calcularResumoDinamico().map((resumo, index) => (
+                    <TableRow key={resumo.tipo} sx={{ '&:nth-of-type(odd)': { backgroundColor: '#fafafa' } }}>
+                      <TableCell sx={{ fontWeight: 'bold' }}>
+                        {resumo.tipo}
+                      </TableCell>
+                      <TableCell align="center">
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                          {resumo.pendente.quantidade} títulos
+                        </Typography>
+                        <Typography variant="body2">
+                          R$ {formatarDecimal(resumo.pendente.valor)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                          {resumo.pago.quantidade} títulos
+                        </Typography>
+                        <Typography variant="body2">
+                          R$ {formatarDecimal(resumo.pago.valor)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                          {resumo.total.quantidade} títulos
+                        </Typography>
+                        <Typography variant="body2">
+                          R$ {formatarDecimal(resumo.total.valor)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                          {resumo.percentual.toFixed(1)}%
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  
+                  {/* Linha de Total Geral */}
+                  {calcularResumoDinamico().length > 0 && (
+                    <TableRow sx={{ backgroundColor: '#e3f2fd', fontWeight: 'bold' }}>
+                      <TableCell sx={{ fontWeight: 'bold', fontSize: '1.1em' }}>
+                        TOTAL GERAL
+                      </TableCell>
+                      <TableCell align="center">
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                          {calcularResumoDinamico().reduce((acc, resumo) => acc + resumo.pendente.quantidade, 0)} títulos
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                          R$ {formatarDecimal(calcularResumoDinamico().reduce((acc, resumo) => acc + resumo.pendente.valor, 0))}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                          {calcularResumoDinamico().reduce((acc, resumo) => acc + resumo.pago.quantidade, 0)} títulos
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                          R$ {formatarDecimal(calcularResumoDinamico().reduce((acc, resumo) => acc + resumo.pago.valor, 0))}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                          {calcularResumoDinamico().reduce((acc, resumo) => acc + resumo.total.quantidade, 0)} títulos
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                          R$ {formatarDecimal(calcularResumoDinamico().reduce((acc, resumo) => acc + resumo.total.valor, 0))}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '1.1em' }}>
+                          100.0%
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+
+          {/* Seção de Breakdown Mensal */}
+          {(() => {
+            const breakdownData = (filtros.dataInicial && filtros.dataFinal) && !filtroTipo.todos ? calcularBreakdownMensal() : [];
+            return breakdownData.length > 0 && breakdownData[0]?.meses?.length >= 1 && (
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', textAlign: 'center', color: 'secondary.main' }}>
+                  📅 BREAKDOWN MENSAL {filtros.filial ? `- ${filtros.filial.toUpperCase()}` : 'POR FILIAL'}
+                  <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 'normal' }}>
+                    Período: {filtros.dataInicial ? filtros.dataInicial.split('-').reverse().join('/') : '...'} até {filtros.dataFinal ? filtros.dataFinal.split('-').reverse().join('/') : '...'}
+                  </Typography>
+                </Typography>
+
+                {breakdownData.map((dadosFilial, index) => (
+                <Box key={index} sx={{ mb: 3 }}>
+                  {!filtros.filial && (
+                    <Typography variant="h6" sx={{ mb: 2, color: 'primary.main', fontWeight: 'bold' }}>
+                      🏪 {dadosFilial.filial.toUpperCase()}
+                    </Typography>
+                  )}
+
+                  <TableContainer component={Paper} sx={{ mb: 2 }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                          <TableCell sx={{ fontWeight: 'bold' }}>Mês/Ano</TableCell>
+                          {tipos.map(tipo => (
+                            <TableCell key={tipo.id} align="center" sx={{ fontWeight: 'bold', borderRight: '1px solid #ddd' }} colSpan={2}>
+                              {tipo.nome}
+                            </TableCell>
+                          ))}
+                          <TableCell align="center" sx={{ fontWeight: 'bold', backgroundColor: '#e3f2fd' }} colSpan={2}>
+                            TOTAL
+                          </TableCell>
+                        </TableRow>
+                        <TableRow sx={{ backgroundColor: '#fafafa' }}>
+                          <TableCell sx={{ fontSize: '0.75rem', color: 'text.secondary' }}></TableCell>
+                          {tipos.map(tipo => (
+                            <React.Fragment key={`${tipo.id}-header`}>
+                              <TableCell align="center" sx={{ fontSize: '0.75rem', color: 'text.secondary', borderRight: '1px solid #eee' }}>
+                                Pendentes
+                              </TableCell>
+                              <TableCell align="center" sx={{ fontSize: '0.75rem', color: 'text.secondary', borderRight: '1px solid #ddd' }}>
+                                Pagos
+                              </TableCell>
+                            </React.Fragment>
+                          ))}
+                          <TableCell align="center" sx={{ fontSize: '0.75rem', color: 'text.secondary', backgroundColor: '#e3f2fd', borderRight: '1px solid #eee' }}>
+                            Pendentes
+                          </TableCell>
+                          <TableCell align="center" sx={{ fontSize: '0.75rem', color: 'text.secondary', backgroundColor: '#e3f2fd' }}>
+                            Pagos
+                          </TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {dadosFilial.meses.map((mes: any, mesIndex: number) => (
+                          <TableRow key={mesIndex} sx={{ '&:nth-of-type(odd)': { backgroundColor: '#fafafa' } }}>
+                            <TableCell sx={{ fontWeight: 'bold' }}>
+                              {mes.mes}
+                            </TableCell>
+                            {tipos.map(tipo => {
+                              const dadosTipo = mes.tipos[tipo.nome] || { 
+                                quantidade: 0, 
+                                valor: 0, 
+                                pendentes: { quantidade: 0, valor: 0 },
+                                pagos: { quantidade: 0, valor: 0 }
+                              };
+                              return (
+                                <React.Fragment key={tipo.id}>
+                                  <TableCell align="center" sx={{ borderRight: '1px solid #eee' }}>
+                                    <Typography variant="body2" sx={{ color: 'warning.main' }}>
+                                      {dadosTipo.pendentes.quantidade}
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                                      R$ {formatarDecimal(dadosTipo.pendentes.valor)}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell align="center" sx={{ borderRight: '1px solid #ddd' }}>
+                                    <Typography variant="body2" sx={{ color: 'success.main' }}>
+                                      {dadosTipo.pagos.quantidade}
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                                      R$ {formatarDecimal(dadosTipo.pagos.valor)}
+                                    </Typography>
+                                  </TableCell>
+                                </React.Fragment>
+                              );
+                            })}
+                            <TableCell align="center" sx={{ backgroundColor: '#e3f2fd', borderRight: '1px solid #eee' }}>
+                              <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'warning.main' }}>
+                                {mes.total.pendentes || 0}
+                              </Typography>
+                              <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                                R$ {formatarDecimal(mes.total.valorPendentes || 0)}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="center" sx={{ backgroundColor: '#e3f2fd' }}>
+                              <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+                                {mes.total.pagos || 0}
+                              </Typography>
+                              <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                                R$ {formatarDecimal(mes.total.valorPagos || 0)}
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        
+                        {/* Linha de Total da Filial */}
+                        <TableRow sx={{ backgroundColor: '#1976d2', color: 'white' }}>
+                          <TableCell sx={{ fontWeight: 'bold', color: 'white' }}>
+                            TOTAL
+                          </TableCell>
+                          {tipos.map(tipo => {
+                            const totalTipo = dadosFilial.meses.reduce((acc: any, mes: any) => ({
+                              pendentes: acc.pendentes + (mes.tipos[tipo.nome]?.pendentes?.quantidade || 0),
+                              pagos: acc.pagos + (mes.tipos[tipo.nome]?.pagos?.quantidade || 0),
+                              valorPendentes: parseDecimalSeguro(somarValores(acc.valorPendentes, mes.tipos[tipo.nome]?.pendentes?.valor || 0)),
+                              valorPagos: parseDecimalSeguro(somarValores(acc.valorPagos, mes.tipos[tipo.nome]?.pagos?.valor || 0))
+                            }), { pendentes: 0, pagos: 0, valorPendentes: 0, valorPagos: 0 });
+                            
+                            return (
+                              <React.Fragment key={tipo.id}>
+                                <TableCell align="center" sx={{ color: 'white', borderRight: '1px solid #0d47a1' }}>
+                                  <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                    {totalTipo.pendentes}
+                                  </Typography>
+                                  <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
+                                    R$ {formatarDecimal(totalTipo.valorPendentes)}
+                                  </Typography>
+                                </TableCell>
+                                <TableCell align="center" sx={{ color: 'white', borderRight: '1px solid #1976d2' }}>
+                                  <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                    {totalTipo.pagos}
+                                  </Typography>
+                                  <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
+                                    R$ {formatarDecimal(totalTipo.valorPagos)}
+                                  </Typography>
+                                </TableCell>
+                              </React.Fragment>
+                            );
+                          })}
+                          <TableCell align="center" sx={{ backgroundColor: '#0d47a1', color: 'white', borderRight: '1px solid #0d47a1' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                              {dadosFilial.total.pendentes || 0}
+                            </Typography>
+                            <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
+                              R$ {formatarDecimal(dadosFilial.total.valorPendentes || 0)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="center" sx={{ backgroundColor: '#0d47a1', color: 'white' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                              {dadosFilial.total.pagos || 0}
+                            </Typography>
+                            <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
+                              R$ {formatarDecimal(dadosFilial.total.valorPagos || 0)}
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              ))}
+
+                {/* Resumo Geral do Período (quando há múltiplas filiais) */}
+                {!filtros.filial && breakdownData.length > 1 && (
+                  <Box sx={{ mt: 3 }}>
+                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'success.main' }}>
+                      📈 Resumo Geral do Período
+                    </Typography>
+                    <TableContainer component={Paper}>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow sx={{ backgroundColor: '#e8f5e8' }}>
+                            <TableCell sx={{ fontWeight: 'bold' }}>Filial</TableCell>
+                            <TableCell align="center" sx={{ fontWeight: 'bold' }}>Total Títulos</TableCell>
+                            <TableCell align="center" sx={{ fontWeight: 'bold' }}>Valor Total</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {breakdownData.map((dadosFilial: any, index: number) => (
+                            <TableRow key={index}>
+                              <TableCell sx={{ fontWeight: 'bold' }}>{dadosFilial.filial}</TableCell>
+                              <TableCell align="center">{dadosFilial.total.quantidade} títulos</TableCell>
+                              <TableCell align="center">R$ {formatarDecimal(dadosFilial.total.valor)}</TableCell>
+                            </TableRow>
+                          ))}
+                          <TableRow sx={{ backgroundColor: '#4caf50', color: 'white' }}>
+                            <TableCell sx={{ fontWeight: 'bold', color: 'white' }}>TOTAL GERAL</TableCell>
+                            <TableCell align="center" sx={{ color: 'white', fontWeight: 'bold' }}>
+                              {breakdownData.reduce((acc: number, filial: any) => acc + filial.total.quantidade, 0)} títulos
+                            </TableCell>
+                            <TableCell align="center" sx={{ color: 'white', fontWeight: 'bold' }}>
+                              R$ {formatarDecimal(breakdownData.reduce((acc: number, filial: any) => parseDecimalSeguro(somarValores(acc, filial.total.valor)), 0))}
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Box>
+                )}
+              </Box>
+            );
+          })()}
+
+          {/* Separador visual */}
+          <Box sx={{ my: 4, borderBottom: '2px solid #e0e0e0' }}></Box>
+
+          {/* Seção da Listagem de Títulos */}
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', textAlign: 'center' }}>
+              📋 Listagem Detalhada de Títulos
+              {(filtros.dataInicial || filtros.dataFinal) && !filtroTipo.todos && (
+                <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 'normal' }}>
+                  Mostrando {titulosFiltrados.length} título(s) do período selecionado
+                </Typography>
+              )}
+            </Typography>
+            
+            <List>
             {titulosFiltrados.length === 0 && (
               <Typography color="textSecondary">Nenhum título encontrado.</Typography>
             )}
@@ -2335,20 +2421,21 @@ const EmissaoTitulos: React.FC = () => {
             ))}
           </List>
 
-          {/* Controles de paginação */}
-          {totalPaginas > 1 && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-              <Pagination
-                count={totalPaginas}
-                page={paginaAtual}
-                onChange={(_, novaPagina) => handleMudarPagina(novaPagina)}
-                color="primary"
-                size="large"
-                showFirstButton
-                showLastButton
-              />
-            </Box>
-          )}
+            {/* Controles de paginação */}
+            {totalPaginas > 1 && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+                <Pagination
+                  count={totalPaginas}
+                  page={paginaAtual}
+                  onChange={(_, novaPagina) => handleMudarPagina(novaPagina)}
+                  color="primary"
+                  size="large"
+                  showFirstButton
+                  showLastButton
+                />
+              </Box>
+            )}
+          </Box>
         </CardContent>
       </Card>
     </Box>

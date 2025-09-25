@@ -39,19 +39,19 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper
+  Paper,
+  Divider,
+  Tabs,
+  Tab
 } from '@mui/material';
 
 import DeleteIcon from '@mui/icons-material/Delete';
 import PaymentIcon from '@mui/icons-material/Payment';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import EditIcon from '@mui/icons-material/Edit';
-import AssignmentIcon from '@mui/icons-material/Assignment';
-import PendingActionsIcon from '@mui/icons-material/PendingActions';
-import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import TableViewIcon from '@mui/icons-material/TableView';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import { filiaisService } from '../services/filiaisService';
 import { fornecedoresService } from '../services/fornecedoresService';
 import { tiposFornecedoresService } from '../services/tiposFornecedoresService';
@@ -81,17 +81,20 @@ interface TituloCompleto extends Titulo {
   juros?: number;
 }
 
-interface DashboardMetricas {
-  titulosPagos: { quantidade: number; valor: number };
-  titulosPendentes: { quantidade: number; valor: number };
-  totalGeral: { quantidade: number; valor: number };
+interface RelatorioTabuladoConfig {
+  filiaisSelecionadas: number[];
+  dataInicial: string;
+  dataFinal: string;
 }
 
-interface DashboardMensal {
-  mes: string;
-  ano: number;
-  metricas: DashboardMetricas;
+interface DadosTabulados {
+  tipo: string;
+  pendente: { quantidade: number; valor: number };
+  pago: { quantidade: number; valor: number };
+  total: { quantidade: number; valor: number };
+  percentual: number;
 }
+
 
 const EmissaoTitulos: React.FC = () => {
   const [titulos, setTitulos] = useState<TituloCompleto[]>([]);
@@ -120,8 +123,18 @@ const EmissaoTitulos: React.FC = () => {
   const [modalEdicao, setModalEdicao] = useState(false);
   const [tituloEdicao, setTituloEdicao] = useState<TituloCompleto | null>(null);
   
-  // Estados para o dashboard mensal
-  const [mostrarDashboardMensal, setMostrarDashboardMensal] = useState(false);
+  // Estados para o relatório tabulado
+  const [modalRelatorioTabulado, setModalRelatorioTabulado] = useState(false);
+  const [configRelatorioTabulado, setConfigRelatorioTabulado] = useState<RelatorioTabuladoConfig>({
+    filiaisSelecionadas: [],
+    dataInicial: '',
+    dataFinal: ''
+  });
+  const [dadosTabulados, setDadosTabulados] = useState<DadosTabulados[]>([]);
+  const [mostrarDadosNoModal, setMostrarDadosNoModal] = useState(false);
+  const [dadosPorFilial, setDadosPorFilial] = useState<{[filialId: number]: DadosTabulados[]}>({});
+  const [filialAtiva, setFilialAtiva] = useState<number>(0);
+  
   
 
   // Função para carregar dados (definida fora do useEffect para ser reutilizável)
@@ -363,143 +376,456 @@ const EmissaoTitulos: React.FC = () => {
     setPaginaAtual(1);
   };
 
-  // Funções para calcular métricas do dashboard
-  const calcularMetricasDashboard = (): DashboardMetricas => {
-    // Se há filtro de período, usar apenas títulos dentro do período
-    let titulosParaCalculo = titulosFiltrados;
-    
-    if (filtros.dataInicial && filtros.dataFinal) {
-      // CORREÇÃO: Usar horário local sem conversão GMT
-      const dataInicio = new Date(filtros.dataInicial + 'T00:00:00');
-      const dataFim = new Date(filtros.dataFinal + 'T23:59:59');
+  // Função para calcular dados tabulados por filial específica
+  const calcularDadosTabuladosPorFilial = (filialId: number): DadosTabulados[] => {
+    // Filtrar títulos por filial específica e período
+    const titulosFiltradosFilial = titulos.filter(titulo => {
+      // Filtro por filial específica
+      const filialValida = titulo.filial_id === filialId;
       
-      titulosParaCalculo = titulosFiltrados.filter(titulo => {
-        let dataComparacao: Date;
-        
-        if (filtroTipo.vencimento) {
-          dataComparacao = new Date(titulo.vencimento);
-        } else if (filtroTipo.pagamento && titulo.data_pagamento) {
-          dataComparacao = new Date(titulo.data_pagamento);
-        } else {
-          // Para "todos", usar data de vencimento como padrão
-          dataComparacao = new Date(titulo.vencimento);
-        }
-        
-        return dataComparacao >= dataInicio && dataComparacao <= dataFim;
-      });
-    }
-    
-    const titulosPagos = titulosParaCalculo.filter(titulo => titulo.status === 'pago');
-    const titulosPendentes = titulosParaCalculo.filter(titulo => titulo.status !== 'pago');
-    
-    return {
-      titulosPagos: {
-        quantidade: titulosPagos.length,
-        valor: titulosPagos.reduce((total, titulo) => total + parseDecimalSeguro(titulo.valor || '0'), 0)
-      },
-      titulosPendentes: {
-        quantidade: titulosPendentes.length,
-        valor: titulosPendentes.reduce((total, titulo) => total + parseDecimalSeguro(titulo.valor || '0'), 0)
-      },
-      totalGeral: {
-        quantidade: titulosParaCalculo.length,
-        valor: titulosParaCalculo.reduce((total, titulo) => total + parseDecimalSeguro(titulo.valor || '0'), 0)
+      // Filtro por período
+      let periodoValido = true;
+      if (configRelatorioTabulado.dataInicial && configRelatorioTabulado.dataFinal) {
+        const dataInicio = new Date(configRelatorioTabulado.dataInicial + 'T00:00:00');
+        const dataFim = new Date(configRelatorioTabulado.dataFinal + 'T23:59:59');
+        const dataVencimento = new Date(titulo.vencimento);
+        periodoValido = dataVencimento >= dataInicio && dataVencimento <= dataFim;
       }
-    };
+      
+      return filialValida && periodoValido;
+    });
+
+    // Agrupar por tipo
+    const agrupamentoPorTipo: { [tipo: string]: TituloCompleto[] } = {};
+    titulosFiltradosFilial.forEach(titulo => {
+      const tipo = titulo.tipo || 'Não especificado';
+      if (!agrupamentoPorTipo[tipo]) {
+        agrupamentoPorTipo[tipo] = [];
+      }
+      agrupamentoPorTipo[tipo].push(titulo);
+    });
+
+    // Calcular totais gerais da filial para percentuais
+    const totalGeralValorFilial = titulosFiltradosFilial.reduce((total, titulo) => 
+      total + parseDecimalSeguro(titulo.valor || '0'), 0);
+
+    // Processar cada tipo da filial
+    const dadosTabulados: DadosTabulados[] = Object.keys(agrupamentoPorTipo).map(tipo => {
+      const titulosDoTipo = agrupamentoPorTipo[tipo];
+      
+      const titulosPagos = titulosDoTipo.filter(t => t.status === 'pago');
+      const titulosPendentes = titulosDoTipo.filter(t => t.status !== 'pago');
+      
+      const valorPago = titulosPagos.reduce((total, titulo) => 
+        total + parseDecimalSeguro(titulo.valor || '0'), 0);
+      const valorPendente = titulosPendentes.reduce((total, titulo) => 
+        total + parseDecimalSeguro(titulo.valor || '0'), 0);
+      const valorTotal = valorPago + valorPendente;
+      
+      return {
+        tipo,
+        pendente: {
+          quantidade: titulosPendentes.length,
+          valor: valorPendente
+        },
+        pago: {
+          quantidade: titulosPagos.length,
+          valor: valorPago
+        },
+        total: {
+          quantidade: titulosDoTipo.length,
+          valor: valorTotal
+        },
+        percentual: totalGeralValorFilial > 0 ? (valorTotal / totalGeralValorFilial) * 100 : 0
+      };
+    });
+
+    // Ordenar por valor total (maior para menor)
+    return dadosTabulados.sort((a, b) => b.total.valor - a.total.valor);
   };
 
-  // Função para calcular dashboard mensal
-  const calcularDashboardMensal = (): DashboardMensal[] => {
-    if (!filtros.dataInicial || !filtros.dataFinal) return [];
-    
-    // CORREÇÃO: Usar horário local sem conversão GMT
-    const dataInicio = new Date(filtros.dataInicial + 'T00:00:00');
-    const dataFim = new Date(filtros.dataFinal + 'T23:59:59');
-    const mesesData: DashboardMensal[] = [];
-    
-    // Iterar mês a mês entre as datas - começar exatamente do mês da data inicial
-    // CORREÇÃO: Só mostrar meses que estão dentro do período especificado
-    const mesInicial = dataInicio.getMonth();
-    const anoInicial = dataInicio.getFullYear();
-    const mesFinal = dataFim.getMonth();
-    const anoFinal = dataFim.getFullYear();
-    
-    const dataAtual = new Date(anoInicial, mesInicial, 1);
-    const dataFinal = new Date(anoFinal, mesFinal, 1);
-    
-    while (dataAtual <= dataFinal) {
-      const ano = dataAtual.getFullYear();
-      const mes = dataAtual.getMonth();
+  // Função para calcular dados tabulados por tipo
+  const calcularDadosTabulados = (config: RelatorioTabuladoConfig): DadosTabulados[] => {
+    // Filtrar títulos por filiais selecionadas e período
+    const titulosFiltradosRelatorio = titulos.filter(titulo => {
+      // Filtro por filiais
+      const filialValida = config.filiaisSelecionadas.length === 0 || 
+                          config.filiaisSelecionadas.includes(titulo.filial_id || 0);
       
-      // VALIDAÇÃO: Só processar se o mês/ano está dentro do período especificado
-      const primeiroDiaDoMes = new Date(ano, mes, 1);
-      const ultimoDiaDoMes = new Date(ano, mes + 1, 0); // Último dia do mês
-      
-      // Verificar se há sobreposição entre o mês atual e o período filtrado
-      const mesTemSobreposicao = (primeiroDiaDoMes <= dataFim) && (ultimoDiaDoMes >= dataInicio);
-      
-      if (!mesTemSobreposicao) {
-        dataAtual.setMonth(dataAtual.getMonth() + 1);
-        continue;
+      // Filtro por período
+      let periodoValido = true;
+      if (config.dataInicial && config.dataFinal) {
+        const dataInicio = new Date(config.dataInicial + 'T00:00:00');
+        const dataFim = new Date(config.dataFinal + 'T23:59:59');
+        const dataVencimento = new Date(titulo.vencimento);
+        periodoValido = dataVencimento >= dataInicio && dataVencimento <= dataFim;
       }
       
-      const nomesMeses = [
-        'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-      ];
+      return filialValida && periodoValido;
+    });
+
+    // Agrupar por tipo
+    const agrupamentoPorTipo: { [tipo: string]: TituloCompleto[] } = {};
+    titulosFiltradosRelatorio.forEach(titulo => {
+      const tipo = titulo.tipo || 'Não especificado';
+      if (!agrupamentoPorTipo[tipo]) {
+        agrupamentoPorTipo[tipo] = [];
+      }
+      agrupamentoPorTipo[tipo].push(titulo);
+    });
+
+    // Calcular totais gerais para percentuais
+    const totalGeralValor = titulosFiltradosRelatorio.reduce((total, titulo) => 
+      total + parseDecimalSeguro(titulo.valor || '0'), 0);
+
+    // Processar cada tipo
+    const dadosTabulados: DadosTabulados[] = Object.keys(agrupamentoPorTipo).map(tipo => {
+      const titulosDoTipo = agrupamentoPorTipo[tipo];
       
-      // Filtrar títulos do mês atual baseado no tipo de filtro E dentro do período especificado
-      const titulosDoMes = titulosFiltrados.filter(titulo => {
-        let dataComparacao: Date;
-        
-        if (filtroTipo.vencimento) {
-          dataComparacao = new Date(titulo.vencimento);
-        } else if (filtroTipo.pagamento && titulo.data_pagamento) {
-          dataComparacao = new Date(titulo.data_pagamento);
-        } else {
-          // Para "todos", usar data de vencimento como padrão
-          dataComparacao = new Date(titulo.vencimento);
-        }
-        
-        // Verificar se está no mês/ano atual E dentro do período especificado
-        const estaNoPeriodo = dataComparacao >= dataInicio && dataComparacao <= dataFim;
-        const estaNoMes = dataComparacao.getFullYear() === ano && dataComparacao.getMonth() === mes;
-        
-        return estaNoPeriodo && estaNoMes;
-      });
+      const titulosPagos = titulosDoTipo.filter(t => t.status === 'pago');
+      const titulosPendentes = titulosDoTipo.filter(t => t.status !== 'pago');
       
-      // Calcular métricas do mês
-      const titulosPagos = titulosDoMes.filter(titulo => titulo.status === 'pago');
-      const titulosPendentes = titulosDoMes.filter(titulo => titulo.status !== 'pago');
+      const valorPago = titulosPagos.reduce((total, titulo) => 
+        total + parseDecimalSeguro(titulo.valor || '0'), 0);
+      const valorPendente = titulosPendentes.reduce((total, titulo) => 
+        total + parseDecimalSeguro(titulo.valor || '0'), 0);
+      const valorTotal = valorPago + valorPendente;
       
-      const metricas: DashboardMetricas = {
-        titulosPagos: {
-          quantidade: titulosPagos.length,
-          valor: titulosPagos.reduce((total, titulo) => total + parseDecimalSeguro(titulo.valor || '0'), 0)
-        },
-        titulosPendentes: {
+      return {
+        tipo,
+        pendente: {
           quantidade: titulosPendentes.length,
-          valor: titulosPendentes.reduce((total, titulo) => total + parseDecimalSeguro(titulo.valor || '0'), 0)
+          valor: valorPendente
         },
-        totalGeral: {
-          quantidade: titulosDoMes.length,
-          valor: titulosDoMes.reduce((total, titulo) => total + parseDecimalSeguro(titulo.valor || '0'), 0)
-        }
+        pago: {
+          quantidade: titulosPagos.length,
+          valor: valorPago
+        },
+        total: {
+          quantidade: titulosDoTipo.length,
+          valor: valorTotal
+        },
+        percentual: totalGeralValor > 0 ? (valorTotal / totalGeralValor) * 100 : 0
       };
+    });
+
+    // Ordenar por valor total (maior para menor)
+    return dadosTabulados.sort((a, b) => b.total.valor - a.total.valor);
+  };
+
+  // Função para gerar relatório tabulado
+  const handleGerarRelatorioTabulado = () => {
+    if (configRelatorioTabulado.filiaisSelecionadas.length === 0) {
+      setAlert({
+        open: true,
+        message: 'Selecione pelo menos uma filial para gerar o relatório.',
+        severity: 'warning'
+      });
+      return;
+    }
+
+    if (!configRelatorioTabulado.dataInicial || !configRelatorioTabulado.dataFinal) {
+      setAlert({
+        open: true,
+        message: 'Selecione o período (data inicial e final) para gerar o relatório.',
+        severity: 'warning'
+      });
+      return;
+    }
+
+    // Verificar se todas as filiais estão selecionadas
+    const todasFiliaisSelecionadas = configRelatorioTabulado.filiaisSelecionadas.length === filiais.length;
+    
+    if (todasFiliaisSelecionadas) {
+      // Calcular dados para cada filial separadamente
+      const dadosFiliais: {[filialId: number]: DadosTabulados[]} = {};
+      const filiaisSelecionadas = filiais.filter(f => configRelatorioTabulado.filiaisSelecionadas.includes(f.id));
       
-      // Adicionar todos os meses do período, mesmo que vazios (para mostrar evolução completa)
-      mesesData.push({
-        mes: nomesMeses[mes],
-        ano: ano,
-        metricas: metricas
+      filiaisSelecionadas.forEach(filial => {
+        dadosFiliais[filial.id] = calcularDadosTabuladosPorFilial(filial.id);
       });
       
-      // Avançar para o próximo mês
-      dataAtual.setMonth(dataAtual.getMonth() + 1);
+      setDadosPorFilial(dadosFiliais);
+      setFilialAtiva(filiaisSelecionadas[0]?.id || 0);
+      setDadosTabulados([]); // Limpar dados consolidados
+    } else {
+      // Calcular dados consolidados (comportamento anterior)
+      const dados = calcularDadosTabulados(configRelatorioTabulado);
+      setDadosTabulados(dados);
+      setDadosPorFilial({}); // Limpar dados por filial
     }
     
-    return mesesData;
+    setMostrarDadosNoModal(true);
+    
+    setAlert({
+      open: true,
+      message: 'Relatório tabulado gerado com sucesso!',
+      severity: 'success'
+    });
   };
+
+  // Função para gerar PDF do relatório tabulado
+  const handleGerarPDFTabulado = (tipoEspecifico?: string) => {
+    try {
+      import('jspdf').then(({ default: jsPDF }) => {
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.width;
+        const pageHeight = doc.internal.pageSize.height;
+        const margin = 15;
+        
+        // Verificar se todas as filiais estão selecionadas e não é tipo específico
+        const todasFiliaisSelecionadas = configRelatorioTabulado.filiaisSelecionadas.length === filiais.length;
+        const filiaisSelecionadas = filiais.filter(f => configRelatorioTabulado.filiaisSelecionadas.includes(f.id));
+        
+        if (todasFiliaisSelecionadas && !tipoEspecifico) {
+          // Gerar relatório separado para cada filial em meia folha A4
+          filiaisSelecionadas.forEach((filial, filialIndex) => {
+            // Calcular dados específicos da filial
+            const dadosFilial = calcularDadosTabuladosPorFilial(filial.id);
+            
+            // Posição Y inicial (meia folha A4)
+            let yPosition = filialIndex === 0 ? 20 : (filialIndex % 2 === 0 ? 20 : pageHeight / 2 + 10);
+            
+            // Adicionar nova página a cada 2 filiais
+            if (filialIndex > 0 && filialIndex % 2 === 0) {
+              doc.addPage();
+              yPosition = 20;
+            }
+            
+            // Título da filial
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`Relatório Tabulado - ${filial.nome}`, pageWidth / 2, yPosition, { align: 'center' });
+            
+            yPosition += 10;
+            
+            // Período
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'normal');
+            const periodo = `Período: ${configRelatorioTabulado.dataInicial?.split('-').reverse().join('/')} a ${configRelatorioTabulado.dataFinal?.split('-').reverse().join('/')}`;
+            doc.text(periodo, pageWidth / 2, yPosition, { align: 'center' });
+            
+            yPosition += 12;
+            
+            // Cabeçalho da tabela (compacto)
+            doc.setFontSize(7);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Tipo', margin, yPosition);
+            doc.text('P.Qtd', margin + 35, yPosition);
+            doc.text('P.Valor', margin + 50, yPosition);
+            doc.text('Pg.Qtd', margin + 75, yPosition);
+            doc.text('Pg.Valor', margin + 90, yPosition);
+            doc.text('T.Qtd', margin + 115, yPosition);
+            doc.text('T.Valor', margin + 130, yPosition);
+            doc.text('%', margin + 155, yPosition);
+            
+            yPosition += 3;
+            doc.line(margin, yPosition, pageWidth - margin, yPosition);
+            yPosition += 5;
+            
+            // Dados da filial
+            doc.setFont('helvetica', 'normal');
+            dadosFilial.forEach(dado => {
+              if (yPosition > (filialIndex % 2 === 0 ? pageHeight / 2 - 20 : pageHeight - 20)) {
+                return; // Não exceder o espaço da meia folha
+              }
+              
+              doc.text(dado.tipo.substring(0, 12), margin, yPosition);
+              doc.text(dado.pendente.quantidade.toString(), margin + 35, yPosition);
+              doc.text(`${formatarDecimal(dado.pendente.valor)}`, margin + 50, yPosition);
+              doc.text(dado.pago.quantidade.toString(), margin + 75, yPosition);
+              doc.text(`${formatarDecimal(dado.pago.valor)}`, margin + 90, yPosition);
+              doc.text(dado.total.quantidade.toString(), margin + 115, yPosition);
+              doc.text(`${formatarDecimal(dado.total.valor)}`, margin + 130, yPosition);
+              doc.text(`${dado.percentual.toFixed(1)}%`, margin + 155, yPosition);
+              
+              yPosition += 6;
+            });
+            
+            // Total da filial
+            if (dadosFilial.length > 0) {
+              yPosition += 2;
+              doc.line(margin, yPosition, pageWidth - margin, yPosition);
+              yPosition += 5;
+              
+              const totalFilial = dadosFilial.reduce((acc, dado) => ({
+                pendente: { 
+                  quantidade: acc.pendente.quantidade + dado.pendente.quantidade,
+                  valor: acc.pendente.valor + dado.pendente.valor 
+                },
+                pago: { 
+                  quantidade: acc.pago.quantidade + dado.pago.quantidade,
+                  valor: acc.pago.valor + dado.pago.valor 
+                },
+                total: { 
+                  quantidade: acc.total.quantidade + dado.total.quantidade,
+                  valor: acc.total.valor + dado.total.valor 
+                }
+              }), {
+                pendente: { quantidade: 0, valor: 0 },
+                pago: { quantidade: 0, valor: 0 },
+                total: { quantidade: 0, valor: 0 }
+              });
+              
+              doc.setFont('helvetica', 'bold');
+              doc.text('TOTAL', margin, yPosition);
+              doc.text(totalFilial.pendente.quantidade.toString(), margin + 35, yPosition);
+              doc.text(`${formatarDecimal(totalFilial.pendente.valor)}`, margin + 50, yPosition);
+              doc.text(totalFilial.pago.quantidade.toString(), margin + 75, yPosition);
+              doc.text(`${formatarDecimal(totalFilial.pago.valor)}`, margin + 90, yPosition);
+              doc.text(totalFilial.total.quantidade.toString(), margin + 115, yPosition);
+              doc.text(`${formatarDecimal(totalFilial.total.valor)}`, margin + 130, yPosition);
+              doc.text('100%', margin + 155, yPosition);
+            }
+            
+            // Linha separadora entre filiais (se não for a última)
+            if (filialIndex < filiaisSelecionadas.length - 1 && filialIndex % 2 === 0) {
+              const separatorY = pageHeight / 2;
+              doc.setDrawColor(200, 200, 200);
+              doc.line(margin, separatorY, pageWidth - margin, separatorY);
+              doc.setDrawColor(0, 0, 0);
+            }
+          });
+          
+          // Salvar
+          const nomeArquivo = `relatorio-tabulado-por-filial-${configRelatorioTabulado.dataInicial}.pdf`;
+          doc.save(nomeArquivo);
+          
+          setAlert({
+            open: true,
+            message: `PDF com relatório de ${filiaisSelecionadas.length} filiais gerado com sucesso!`,
+            severity: 'success'
+          });
+          
+        } else {
+          // Relatório normal (tipo específico ou filiais específicas)
+          let yPosition = 30;
+          
+          // Título
+          doc.setFontSize(16);
+          doc.setFont('helvetica', 'bold');
+          const titulo = tipoEspecifico ? 
+            `Relatório Tabulado - ${tipoEspecifico}` : 
+            'Relatório Tabulado por Tipo de Título';
+          doc.text(titulo, pageWidth / 2, yPosition, { align: 'center' });
+          
+          yPosition += 15;
+
+          // Período e filiais
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          const periodo = `Período: ${configRelatorioTabulado.dataInicial?.split('-').reverse().join('/')} a ${configRelatorioTabulado.dataFinal?.split('-').reverse().join('/')}`;
+          doc.text(periodo, pageWidth / 2, yPosition, { align: 'center' });
+          
+          yPosition += 8;
+          
+          const filiaisNomes = filiais
+            .filter(f => configRelatorioTabulado.filiaisSelecionadas.includes(f.id))
+            .map(f => f.nome)
+            .join(', ');
+          doc.text(`Filiais: ${filiaisNomes}`, pageWidth / 2, yPosition, { align: 'center' });
+          
+          yPosition += 20;
+
+          // Cabeçalho da tabela
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Tipo', margin, yPosition);
+          doc.text('Pend.Qtd', margin + 40, yPosition);
+          doc.text('Pend.Valor', margin + 60, yPosition);
+          doc.text('Pago Qtd', margin + 85, yPosition);
+          doc.text('Pago Valor', margin + 105, yPosition);
+          doc.text('Total Qtd', margin + 130, yPosition);
+          doc.text('Total Valor', margin + 150, yPosition);
+          doc.text('%', margin + 175, yPosition);
+          
+          yPosition += 5;
+          doc.line(margin, yPosition, pageWidth - margin, yPosition);
+          yPosition += 8;
+
+          // Dados
+          const dadosParaPDF = tipoEspecifico ? 
+            dadosTabulados.filter(d => d.tipo === tipoEspecifico) : 
+            dadosTabulados;
+
+          doc.setFont('helvetica', 'normal');
+          dadosParaPDF.forEach(dado => {
+            if (yPosition > 250) {
+              doc.addPage();
+              yPosition = 30;
+            }
+
+            doc.text(dado.tipo.substring(0, 15), margin, yPosition);
+            doc.text(dado.pendente.quantidade.toString(), margin + 40, yPosition);
+            doc.text(`R$ ${formatarDecimal(dado.pendente.valor)}`, margin + 60, yPosition);
+            doc.text(dado.pago.quantidade.toString(), margin + 85, yPosition);
+            doc.text(`R$ ${formatarDecimal(dado.pago.valor)}`, margin + 105, yPosition);
+            doc.text(dado.total.quantidade.toString(), margin + 130, yPosition);
+            doc.text(`R$ ${formatarDecimal(dado.total.valor)}`, margin + 150, yPosition);
+            doc.text(`${dado.percentual.toFixed(1)}%`, margin + 175, yPosition);
+            
+            yPosition += 8;
+          });
+
+          // Total geral (se não for tipo específico)
+          if (!tipoEspecifico && dadosTabulados.length > 0) {
+            yPosition += 5;
+            doc.line(margin, yPosition, pageWidth - margin, yPosition);
+            yPosition += 8;
+            
+            const totalGeral = dadosTabulados.reduce((acc, dado) => ({
+              pendente: { 
+                quantidade: acc.pendente.quantidade + dado.pendente.quantidade,
+                valor: acc.pendente.valor + dado.pendente.valor 
+              },
+              pago: { 
+                quantidade: acc.pago.quantidade + dado.pago.quantidade,
+                valor: acc.pago.valor + dado.pago.valor 
+              },
+              total: { 
+                quantidade: acc.total.quantidade + dado.total.quantidade,
+                valor: acc.total.valor + dado.total.valor 
+              }
+            }), {
+              pendente: { quantidade: 0, valor: 0 },
+              pago: { quantidade: 0, valor: 0 },
+              total: { quantidade: 0, valor: 0 }
+            });
+
+            doc.setFont('helvetica', 'bold');
+            doc.text('TOTAL GERAL', margin, yPosition);
+            doc.text(totalGeral.pendente.quantidade.toString(), margin + 40, yPosition);
+            doc.text(`R$ ${formatarDecimal(totalGeral.pendente.valor)}`, margin + 60, yPosition);
+            doc.text(totalGeral.pago.quantidade.toString(), margin + 85, yPosition);
+            doc.text(`R$ ${formatarDecimal(totalGeral.pago.valor)}`, margin + 105, yPosition);
+            doc.text(totalGeral.total.quantidade.toString(), margin + 130, yPosition);
+            doc.text(`R$ ${formatarDecimal(totalGeral.total.valor)}`, margin + 150, yPosition);
+            doc.text('100%', margin + 175, yPosition);
+          }
+
+          // Salvar
+          const nomeArquivo = tipoEspecifico ? 
+            `relatorio-tabulado-${tipoEspecifico.replace(/\s+/g, '-')}-${configRelatorioTabulado.dataInicial}.pdf` :
+            `relatorio-tabulado-geral-${configRelatorioTabulado.dataInicial}.pdf`;
+          doc.save(nomeArquivo);
+
+          setAlert({
+            open: true,
+            message: `PDF ${tipoEspecifico ? 'do tipo ' + tipoEspecifico : 'geral'} gerado com sucesso!`,
+            severity: 'success'
+          });
+        }
+      });
+    } catch (error) {
+      console.error('Erro ao gerar PDF tabulado:', error);
+      setAlert({
+        open: true,
+        message: 'Erro ao gerar PDF. Tente novamente.',
+        severity: 'error'
+      });
+    }
+  };
+
 
   // Funções para ações
   const handlePagar = (id: number) => {
@@ -843,9 +1169,6 @@ const EmissaoTitulos: React.FC = () => {
         filtroTipo: filtroTipo
       };
       
-      // Incluir dados mensais se houver filtro de período
-      const dadosMensais = filtros.dataInicial && filtros.dataFinal ? calcularDashboardMensal() : [];
-      const metricas = calcularMetricasDashboard();
       
       // Por enquanto, usar a função original do PDF - pode ser expandida futuramente
       const doc = relatorioService.gerarRelatorioTitulos(titulosFiltrados, filtrosRelatorio);
@@ -868,148 +1191,6 @@ const EmissaoTitulos: React.FC = () => {
     }
   };
 
-  const handleGerarPDFMensal = () => {
-    try {
-      if (!filtros.dataInicial || !filtros.dataFinal) {
-        setAlert({
-          open: true,
-          message: 'Selecione um período para gerar o relatório mensal.',
-          severity: 'warning'
-        });
-        return;
-      }
-
-      // Importar jsPDF dinamicamente
-      import('jspdf').then(({ default: jsPDF }) => {
-        const doc = new jsPDF();
-        const dadosMensais = calcularDashboardMensal();
-        const metricas = calcularMetricasDashboard();
-        
-        // Configurações do documento
-        const pageWidth = doc.internal.pageSize.width;
-        const margin = 20;
-        let yPosition = 30;
-        
-        // Título do relatório
-        doc.setFontSize(18);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Dashboard Mensal - Títulos', pageWidth / 2, yPosition, { align: 'center' });
-        
-        yPosition += 15;
-        
-        // Período
-        doc.setFontSize(12);
-        doc.setFont('helvetica', 'normal');
-        const periodoTexto = `Período: ${filtros.dataInicial?.split('-').reverse().join('/')} a ${filtros.dataFinal?.split('-').reverse().join('/')}`;
-        doc.text(periodoTexto, pageWidth / 2, yPosition, { align: 'center' });
-        
-        yPosition += 20;
-        
-        // Resumo geral
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Resumo Geral do Período', margin, yPosition);
-        
-        yPosition += 10;
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        
-        // Títulos Pagos
-        doc.setTextColor(33, 150, 243); // Azul
-        doc.text(`Títulos Pagos: ${metricas.titulosPagos.quantidade} títulos - R$ ${metricas.titulosPagos.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin, yPosition);
-        
-        yPosition += 8;
-        
-        // Títulos Pendentes
-        doc.setTextColor(244, 67, 54); // Vermelho
-        doc.text(`Títulos Pendentes: ${metricas.titulosPendentes.quantidade} títulos - R$ ${metricas.titulosPendentes.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin, yPosition);
-        
-        yPosition += 8;
-        
-        // Total Geral
-        doc.setTextColor(255, 152, 0); // Laranja
-        doc.text(`Total Geral: ${metricas.totalGeral.quantidade} títulos - R$ ${metricas.totalGeral.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin, yPosition);
-        
-        yPosition += 20;
-        
-        // Detalhamento mensal
-        doc.setTextColor(0, 0, 0); // Preto
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Detalhamento Mensal', margin, yPosition);
-        
-        yPosition += 15;
-        
-        // Cabeçalho da tabela
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Mês/Ano', margin, yPosition);
-        doc.text('Títulos Pagos', margin + 40, yPosition);
-        doc.text('Títulos Pendentes', margin + 90, yPosition);
-        doc.text('Total Geral', margin + 140, yPosition);
-        
-        yPosition += 8;
-        
-        // Linha separadora
-        doc.line(margin, yPosition - 2, pageWidth - margin, yPosition - 2);
-        
-        yPosition += 5;
-        
-        // Dados mensais
-        doc.setFont('helvetica', 'normal');
-        dadosMensais.forEach((dadosMes) => {
-          if (yPosition > 250) { // Nova página se necessário
-            doc.addPage();
-            yPosition = 30;
-          }
-          
-          // Mês/Ano
-          doc.setTextColor(0, 0, 0);
-          doc.text(`${dadosMes.mes} ${dadosMes.ano}`, margin, yPosition);
-          
-          // Títulos Pagos
-          doc.setTextColor(33, 150, 243);
-          doc.text(`${dadosMes.metricas.titulosPagos.quantidade}`, margin + 40, yPosition);
-          doc.text(`R$ ${dadosMes.metricas.titulosPagos.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin + 50, yPosition);
-          
-          // Títulos Pendentes
-          doc.setTextColor(244, 67, 54);
-          doc.text(`${dadosMes.metricas.titulosPendentes.quantidade}`, margin + 90, yPosition);
-          doc.text(`R$ ${dadosMes.metricas.titulosPendentes.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin + 100, yPosition);
-          
-          // Total Geral
-          doc.setTextColor(255, 152, 0);
-          doc.text(`${dadosMes.metricas.totalGeral.quantidade}`, margin + 140, yPosition);
-          doc.text(`R$ ${dadosMes.metricas.totalGeral.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin + 150, yPosition);
-          
-          yPosition += 10;
-        });
-        
-        // Rodapé
-        const dataGeracao = new Date().toLocaleString('pt-BR');
-        doc.setTextColor(128, 128, 128);
-        doc.setFontSize(8);
-        doc.text(`Gerado em: ${dataGeracao}`, margin, doc.internal.pageSize.height - 10);
-        
-        // Salvar o PDF
-        const nomeArquivo = `dashboard-mensal-${filtros.dataInicial}-${filtros.dataFinal}.pdf`;
-        doc.save(nomeArquivo);
-        
-        setAlert({
-          open: true,
-          message: 'Relatório mensal PDF gerado com sucesso!',
-          severity: 'success'
-        });
-      });
-    } catch (error) {
-      console.error('Erro ao gerar PDF mensal:', error);
-      setAlert({
-        open: true,
-        message: 'Erro ao gerar relatório mensal PDF. Tente novamente.',
-        severity: 'error'
-      });
-    }
-  };
 
   const handleCloseAlert = () => {
     setAlert({ ...alert, open: false });
@@ -1200,6 +1381,605 @@ const EmissaoTitulos: React.FC = () => {
         </DialogActions>
       </Dialog>
 
+      {/* Modal de Configuração do Relatório Tabulado */}
+      <Dialog 
+        open={modalRelatorioTabulado} 
+        onClose={() => {
+          setModalRelatorioTabulado(false);
+          setMostrarDadosNoModal(false);
+          setDadosTabulados([]);
+          setDadosPorFilial({});
+          setFilialAtiva(0);
+        }} 
+        maxWidth={mostrarDadosNoModal ? "lg" : "md"} 
+        fullWidth
+      >
+        <DialogTitle>
+          {mostrarDadosNoModal ? "📊 Relatório Tabulado por Tipo de Título" : "Configurar Relatório Tabulado"}
+        </DialogTitle>
+        <DialogContent>
+          {!mostrarDadosNoModal ? (
+            // Tela de configuração
+            <>
+              <DialogContentText sx={{ mb: 3 }}>
+                Configure as filiais e o período para gerar o relatório tabulado por tipo de título.
+              </DialogContentText>
+              
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {/* Seleção de Filiais */}
+                <Box>
+                  <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
+                    Selecione as Filiais:
+                  </Typography>
+                  <FormGroup row>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={configRelatorioTabulado.filiaisSelecionadas.length === filiais.length}
+                          indeterminate={configRelatorioTabulado.filiaisSelecionadas.length > 0 && configRelatorioTabulado.filiaisSelecionadas.length < filiais.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setConfigRelatorioTabulado(prev => ({
+                                ...prev,
+                                filiaisSelecionadas: filiais.map(f => f.id)
+                              }));
+                            } else {
+                              setConfigRelatorioTabulado(prev => ({
+                                ...prev,
+                                filiaisSelecionadas: []
+                              }));
+                            }
+                          }}
+                        />
+                      }
+                      label="Todas as Filiais"
+                      sx={{ fontWeight: 'bold', mb: 1, width: '100%' }}
+                    />
+                  </FormGroup>
+                  <Divider sx={{ my: 1 }} />
+                  <FormGroup>
+                    {filiais.map(filial => (
+                      <FormControlLabel
+                        key={filial.id}
+                        control={
+                          <Checkbox
+                            checked={configRelatorioTabulado.filiaisSelecionadas.includes(filial.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setConfigRelatorioTabulado(prev => ({
+                                  ...prev,
+                                  filiaisSelecionadas: [...prev.filiaisSelecionadas, filial.id]
+                                }));
+                              } else {
+                                setConfigRelatorioTabulado(prev => ({
+                                  ...prev,
+                                  filiaisSelecionadas: prev.filiaisSelecionadas.filter(id => id !== filial.id)
+                                }));
+                              }
+                            }}
+                          />
+                        }
+                        label={filial.nome}
+                      />
+                    ))}
+                  </FormGroup>
+                </Box>
+
+                {/* Seleção de Período */}
+                <Box>
+                  <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
+                    Período:
+                  </Typography>
+                  <Stack direction="row" spacing={2}>
+                    <TextField
+                      label="Data Inicial"
+                      type="date"
+                      fullWidth
+                      value={configRelatorioTabulado.dataInicial}
+                      onChange={(e) => setConfigRelatorioTabulado(prev => ({
+                        ...prev,
+                        dataInicial: e.target.value
+                      }))}
+                      InputLabelProps={{ shrink: true }}
+                      required
+                    />
+                    <TextField
+                      label="Data Final"
+                      type="date"
+                      fullWidth
+                      value={configRelatorioTabulado.dataFinal}
+                      onChange={(e) => setConfigRelatorioTabulado(prev => ({
+                        ...prev,
+                        dataFinal: e.target.value
+                      }))}
+                      InputLabelProps={{ shrink: true }}
+                      required
+                    />
+                  </Stack>
+                </Box>
+              </Box>
+            </>
+          ) : (
+            // Tela com dados do relatório
+            <Box sx={{ mt: 2 }}>
+              {/* Informações do Relatório */}
+              <Box sx={{ mb: 3, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1 }}>
+                <Typography variant="body2" color="textSecondary">
+                  <strong>Período:</strong> {configRelatorioTabulado.dataInicial?.split('-').reverse().join('/')} a {configRelatorioTabulado.dataFinal?.split('-').reverse().join('/')}
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  <strong>Filiais:</strong> {filiais
+                    .filter(f => configRelatorioTabulado.filiaisSelecionadas.includes(f.id))
+                    .map(f => f.nome)
+                    .join(', ')}
+                </Typography>
+              </Box>
+
+              {/* Verificar se é visualização por filial ou consolidada */}
+              {Object.keys(dadosPorFilial).length > 0 ? (
+                // Visualização por filial (quando todas as filiais estão selecionadas)
+                <Box>
+                  {/* Abas das Filiais */}
+                  <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+                    <Tabs 
+                      value={filialAtiva} 
+                      onChange={(event, newValue) => setFilialAtiva(newValue)}
+                      variant="scrollable"
+                      scrollButtons="auto"
+                    >
+                      {filiais
+                        .filter(f => configRelatorioTabulado.filiaisSelecionadas.includes(f.id))
+                        .map(filial => (
+                          <Tab 
+                            key={filial.id} 
+                            label={filial.nome} 
+                            value={filial.id}
+                            sx={{ fontWeight: 'bold' }}
+                          />
+                        ))}
+                    </Tabs>
+                  </Box>
+
+                  {/* Conteúdo da Filial Ativa */}
+                  {dadosPorFilial[filialAtiva] && (
+                    <Box>
+                      {/* Nome da Filial Ativa */}
+                      <Typography variant="h6" sx={{ mb: 2, color: 'primary.main', fontWeight: 'bold' }}>
+                        📍 {filiais.find(f => f.id === filialAtiva)?.nome}
+                      </Typography>
+
+                      {/* Tabela da Filial */}
+                      <TableContainer component={Paper} sx={{ maxHeight: 350 }}>
+                        <Table size="small" stickyHeader>
+                          <TableHead>
+                            <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                              <TableCell sx={{ fontWeight: 'bold' }}>Tipo de Título</TableCell>
+                              <TableCell align="center" sx={{ fontWeight: 'bold', color: '#F44336' }}>Pendente</TableCell>
+                              <TableCell align="center" sx={{ fontWeight: 'bold', color: '#2196F3' }}>Pago</TableCell>
+                              <TableCell align="center" sx={{ fontWeight: 'bold', color: '#FF9800' }}>Total</TableCell>
+                              <TableCell align="center" sx={{ fontWeight: 'bold' }}>% Total</TableCell>
+                              <TableCell align="center" sx={{ fontWeight: 'bold' }}>Ações</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {dadosPorFilial[filialAtiva].map((dado, index) => (
+                              <TableRow key={dado.tipo} sx={{ '&:nth-of-type(odd)': { backgroundColor: '#fafafa' } }}>
+                                <TableCell sx={{ fontWeight: 'bold' }}>
+                                  {dado.tipo}
+                                </TableCell>
+                                <TableCell align="center">
+                                  <Box sx={{ color: '#F44336' }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                      {dado.pendente.quantidade} títulos
+                                    </Typography>
+                                    <Typography variant="body2">
+                                      R$ {formatarDecimal(dado.pendente.valor)}
+                                    </Typography>
+                                  </Box>
+                                </TableCell>
+                                <TableCell align="center">
+                                  <Box sx={{ color: '#2196F3' }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                      {dado.pago.quantidade} títulos
+                                    </Typography>
+                                    <Typography variant="body2">
+                                      R$ {formatarDecimal(dado.pago.valor)}
+                                    </Typography>
+                                  </Box>
+                                </TableCell>
+                                <TableCell align="center">
+                                  <Box sx={{ color: '#FF9800' }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                      {dado.total.quantidade} títulos
+                                    </Typography>
+                                    <Typography variant="body2">
+                                      R$ {formatarDecimal(dado.total.valor)}
+                                    </Typography>
+                                  </Box>
+                                </TableCell>
+                                <TableCell align="center">
+                                  <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                    {dado.percentual.toFixed(1)}%
+                                  </Typography>
+                                </TableCell>
+                                <TableCell align="center">
+                                  <Button
+                                    variant="outlined"
+                                    size="small"
+                                    startIcon={<PictureAsPdfIcon />}
+                                    onClick={() => handleGerarPDFTabulado(dado.tipo)}
+                                  >
+                                    PDF Tipo
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            
+                            {/* Linha de Total da Filial */}
+                            {dadosPorFilial[filialAtiva].length > 0 && (
+                              <TableRow sx={{ backgroundColor: '#e3f2fd', fontWeight: 'bold' }}>
+                                <TableCell sx={{ fontWeight: 'bold', fontSize: '1.1em' }}>
+                                  TOTAL DA FILIAL
+                                </TableCell>
+                                <TableCell align="center">
+                                  <Box sx={{ color: '#F44336' }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                      {dadosPorFilial[filialAtiva].reduce((acc, dado) => acc + dado.pendente.quantidade, 0)} títulos
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                      R$ {formatarDecimal(dadosPorFilial[filialAtiva].reduce((acc, dado) => acc + dado.pendente.valor, 0))}
+                                    </Typography>
+                                  </Box>
+                                </TableCell>
+                                <TableCell align="center">
+                                  <Box sx={{ color: '#2196F3' }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                      {dadosPorFilial[filialAtiva].reduce((acc, dado) => acc + dado.pago.quantidade, 0)} títulos
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                      R$ {formatarDecimal(dadosPorFilial[filialAtiva].reduce((acc, dado) => acc + dado.pago.valor, 0))}
+                                    </Typography>
+                                  </Box>
+                                </TableCell>
+                                <TableCell align="center">
+                                  <Box sx={{ color: '#FF9800' }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                      {dadosPorFilial[filialAtiva].reduce((acc, dado) => acc + dado.total.quantidade, 0)} títulos
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                      R$ {formatarDecimal(dadosPorFilial[filialAtiva].reduce((acc, dado) => acc + dado.total.valor, 0))}
+                                    </Typography>
+                                  </Box>
+                                </TableCell>
+                                <TableCell align="center">
+                                  <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '1.1em' }}>
+                                    100%
+                                  </Typography>
+                                </TableCell>
+                                <TableCell align="center">
+                                  <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
+                                    Use os botões abaixo
+                                  </Typography>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Box>
+                  )}
+                </Box>
+              ) : (
+                // Visualização consolidada (quando filiais específicas estão selecionadas)
+                <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Tipo de Título</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold', color: '#F44336' }}>Pendente</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold', color: '#2196F3' }}>Pago</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold', color: '#FF9800' }}>Total</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold' }}>% Total</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold' }}>Ações</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {dadosTabulados.map((dado, index) => (
+                        <TableRow key={dado.tipo} sx={{ '&:nth-of-type(odd)': { backgroundColor: '#fafafa' } }}>
+                          <TableCell sx={{ fontWeight: 'bold' }}>
+                            {dado.tipo}
+                          </TableCell>
+                          <TableCell align="center">
+                            <Box sx={{ color: '#F44336' }}>
+                              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                {dado.pendente.quantidade} títulos
+                              </Typography>
+                              <Typography variant="body2">
+                                R$ {formatarDecimal(dado.pendente.valor)}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Box sx={{ color: '#2196F3' }}>
+                              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                {dado.pago.quantidade} títulos
+                              </Typography>
+                              <Typography variant="body2">
+                                R$ {formatarDecimal(dado.pago.valor)}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Box sx={{ color: '#FF9800' }}>
+                              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                {dado.total.quantidade} títulos
+                              </Typography>
+                              <Typography variant="body2">
+                                R$ {formatarDecimal(dado.total.valor)}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                              {dado.percentual.toFixed(1)}%
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              startIcon={<PictureAsPdfIcon />}
+                              onClick={() => handleGerarPDFTabulado(dado.tipo)}
+                            >
+                              PDF Tipo
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      
+                      {/* Linha de Total Geral */}
+                      {dadosTabulados.length > 0 && (
+                        <TableRow sx={{ backgroundColor: '#e3f2fd', fontWeight: 'bold' }}>
+                          <TableCell sx={{ fontWeight: 'bold', fontSize: '1.1em' }}>
+                            TOTAL GERAL
+                          </TableCell>
+                          <TableCell align="center">
+                            <Box sx={{ color: '#F44336' }}>
+                              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                {dadosTabulados.reduce((acc, dado) => acc + dado.pendente.quantidade, 0)} títulos
+                              </Typography>
+                              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                R$ {formatarDecimal(dadosTabulados.reduce((acc, dado) => acc + dado.pendente.valor, 0))}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Box sx={{ color: '#2196F3' }}>
+                              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                {dadosTabulados.reduce((acc, dado) => acc + dado.pago.quantidade, 0)} títulos
+                              </Typography>
+                              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                R$ {formatarDecimal(dadosTabulados.reduce((acc, dado) => acc + dado.pago.valor, 0))}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Box sx={{ color: '#FF9800' }}>
+                              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                {dadosTabulados.reduce((acc, dado) => acc + dado.total.quantidade, 0)} títulos
+                              </Typography>
+                              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                R$ {formatarDecimal(dadosTabulados.reduce((acc, dado) => acc + dado.total.valor, 0))}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '1.1em' }}>
+                              100%
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Button
+                              variant="contained"
+                              size="small"
+                              startIcon={<PictureAsPdfIcon />}
+                              onClick={() => handleGerarPDFTabulado()}
+                              color="primary"
+                            >
+                              PDF Geral
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          {!mostrarDadosNoModal ? (
+            // Botões da tela de configuração
+            <>
+              <Button 
+                variant="contained" 
+                color="primary" 
+                onClick={handleGerarRelatorioTabulado}
+                disabled={configRelatorioTabulado.filiaisSelecionadas.length === 0 || !configRelatorioTabulado.dataInicial || !configRelatorioTabulado.dataFinal}
+              >
+                Gerar Relatório
+              </Button>
+              <Button onClick={() => setModalRelatorioTabulado(false)}>Cancelar</Button>
+            </>
+          ) : (
+            // Botões da tela de dados
+            <>
+              <Button 
+                variant="outlined"
+                onClick={() => {
+                  setMostrarDadosNoModal(false);
+                  setDadosTabulados([]);
+                  setDadosPorFilial({});
+                  setFilialAtiva(0);
+                }}
+                startIcon={<ExpandLessIcon />}
+              >
+                Voltar à Configuração
+              </Button>
+              {Object.keys(dadosPorFilial).length > 0 ? (
+                // Botões para visualização por filial (todas as filiais selecionadas)
+                <>
+                  <Button 
+                    variant="outlined"
+                    startIcon={<PictureAsPdfIcon />}
+                    onClick={() => handleGerarPDFTabulado()}
+                    color="primary"
+                  >
+                    PDF Todas as Filiais (Meia A4)
+                  </Button>
+                  <Button 
+                    variant="contained"
+                    startIcon={<PictureAsPdfIcon />}
+                    onClick={() => {
+                      const filialAtual = filiais.find(f => f.id === filialAtiva);
+                      if (filialAtual) {
+                        // Gerar PDF apenas da filial ativa usando a função de filial específica
+                        import('jspdf').then(({ default: jsPDF }) => {
+                          const doc = new jsPDF();
+                          const pageWidth = doc.internal.pageSize.width;
+                          const margin = 20;
+                          let yPosition = 30;
+
+                          // Título da filial
+                          doc.setFontSize(16);
+                          doc.setFont('helvetica', 'bold');
+                          doc.text(`Relatório Tabulado - ${filialAtual.nome}`, pageWidth / 2, yPosition, { align: 'center' });
+                          
+                          yPosition += 15;
+
+                          // Período
+                          doc.setFontSize(10);
+                          doc.setFont('helvetica', 'normal');
+                          const periodo = `Período: ${configRelatorioTabulado.dataInicial?.split('-').reverse().join('/')} a ${configRelatorioTabulado.dataFinal?.split('-').reverse().join('/')}`;
+                          doc.text(periodo, pageWidth / 2, yPosition, { align: 'center' });
+                          
+                          yPosition += 20;
+
+                          // Cabeçalho da tabela
+                          doc.setFontSize(8);
+                          doc.setFont('helvetica', 'bold');
+                          doc.text('Tipo', margin, yPosition);
+                          doc.text('Pend.Qtd', margin + 40, yPosition);
+                          doc.text('Pend.Valor', margin + 60, yPosition);
+                          doc.text('Pago Qtd', margin + 85, yPosition);
+                          doc.text('Pago Valor', margin + 105, yPosition);
+                          doc.text('Total Qtd', margin + 130, yPosition);
+                          doc.text('Total Valor', margin + 150, yPosition);
+                          doc.text('%', margin + 175, yPosition);
+                          
+                          yPosition += 5;
+                          doc.line(margin, yPosition, pageWidth - margin, yPosition);
+                          yPosition += 8;
+
+                          // Dados da filial ativa
+                          doc.setFont('helvetica', 'normal');
+                          dadosPorFilial[filialAtiva].forEach(dado => {
+                            if (yPosition > 250) {
+                              doc.addPage();
+                              yPosition = 30;
+                            }
+
+                            doc.text(dado.tipo.substring(0, 15), margin, yPosition);
+                            doc.text(dado.pendente.quantidade.toString(), margin + 40, yPosition);
+                            doc.text(`R$ ${formatarDecimal(dado.pendente.valor)}`, margin + 60, yPosition);
+                            doc.text(dado.pago.quantidade.toString(), margin + 85, yPosition);
+                            doc.text(`R$ ${formatarDecimal(dado.pago.valor)}`, margin + 105, yPosition);
+                            doc.text(dado.total.quantidade.toString(), margin + 130, yPosition);
+                            doc.text(`R$ ${formatarDecimal(dado.total.valor)}`, margin + 150, yPosition);
+                            doc.text(`${dado.percentual.toFixed(1)}%`, margin + 175, yPosition);
+                            
+                            yPosition += 8;
+                          });
+
+                          // Total da filial
+                          if (dadosPorFilial[filialAtiva].length > 0) {
+                            yPosition += 5;
+                            doc.line(margin, yPosition, pageWidth - margin, yPosition);
+                            yPosition += 8;
+                            
+                            const totalFilial = dadosPorFilial[filialAtiva].reduce((acc, dado) => ({
+                              pendente: { 
+                                quantidade: acc.pendente.quantidade + dado.pendente.quantidade,
+                                valor: acc.pendente.valor + dado.pendente.valor 
+                              },
+                              pago: { 
+                                quantidade: acc.pago.quantidade + dado.pago.quantidade,
+                                valor: acc.pago.valor + dado.pago.valor 
+                              },
+                              total: { 
+                                quantidade: acc.total.quantidade + dado.total.quantidade,
+                                valor: acc.total.valor + dado.total.valor 
+                              }
+                            }), {
+                              pendente: { quantidade: 0, valor: 0 },
+                              pago: { quantidade: 0, valor: 0 },
+                              total: { quantidade: 0, valor: 0 }
+                            });
+
+                            doc.setFont('helvetica', 'bold');
+                            doc.text('TOTAL', margin, yPosition);
+                            doc.text(totalFilial.pendente.quantidade.toString(), margin + 40, yPosition);
+                            doc.text(`R$ ${formatarDecimal(totalFilial.pendente.valor)}`, margin + 60, yPosition);
+                            doc.text(totalFilial.pago.quantidade.toString(), margin + 85, yPosition);
+                            doc.text(`R$ ${formatarDecimal(totalFilial.pago.valor)}`, margin + 105, yPosition);
+                            doc.text(totalFilial.total.quantidade.toString(), margin + 130, yPosition);
+                            doc.text(`R$ ${formatarDecimal(totalFilial.total.valor)}`, margin + 150, yPosition);
+                            doc.text('100%', margin + 175, yPosition);
+                          }
+
+                          // Salvar
+                          const nomeArquivo = `relatorio-tabulado-${filialAtual.nome.replace(/\s+/g, '-')}-${configRelatorioTabulado.dataInicial}.pdf`;
+                          doc.save(nomeArquivo);
+
+                          setAlert({
+                            open: true,
+                            message: `PDF da filial ${filialAtual.nome} gerado com sucesso!`,
+                            severity: 'success'
+                          });
+                        });
+                      }
+                    }}
+                    color="secondary"
+                  >
+                    PDF desta Filial
+                  </Button>
+                </>
+              ) : (
+                // Botão para visualização consolidada
+                <Button 
+                  variant="contained"
+                  startIcon={<PictureAsPdfIcon />}
+                  onClick={() => handleGerarPDFTabulado()}
+                  color="primary"
+                >
+                  Gerar PDF Geral
+                </Button>
+              )}
+              <Button onClick={() => {
+                setModalRelatorioTabulado(false);
+                setMostrarDadosNoModal(false);
+                setDadosTabulados([]);
+                setDadosPorFilial({});
+                setFilialAtiva(0);
+              }}>
+                Fechar
+              </Button>
+            </>
+          )}
+        </DialogActions>
+      </Dialog>
+
       <Typography variant="h4" gutterBottom color="primary">
         Extrato de Títulos
       </Typography>
@@ -1299,198 +2079,20 @@ const EmissaoTitulos: React.FC = () => {
         </CardContent>
       </Card>
       
-      {/* Mini Dashboard */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom color="primary" sx={{ mb: 3, fontWeight: 'bold' }}>
-            📊 Dashboard de Títulos
-          </Typography>
-          <Box sx={{ 
-            display: 'grid', 
-            gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' }, 
-            gap: 3 
-          }}>
-            {/* Títulos Pagos */}
-            <Card sx={{ 
-              border: '2px solid #2196F3',
-              transition: 'transform 0.2s ease-in-out',
-              '&:hover': { transform: 'translateY(-4px)' }
-            }}>
-              <CardContent sx={{ textAlign: 'center', py: 3 }}>
-                <PaymentIcon sx={{ fontSize: 48, mb: 1, color: '#2196F3' }} />
-                <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', mb: 1, color: '#2196F3' }}>
-                  {calcularMetricasDashboard().titulosPagos.quantidade}
-                </Typography>
-                <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', mb: 1, color: '#2196F3' }}>
-                  R$ {formatarDecimal(calcularMetricasDashboard().titulosPagos.valor)}
-                </Typography>
-                <Typography variant="body1" color="textSecondary">
-                  Títulos Pagos
-                </Typography>
-              </CardContent>
-            </Card>
-
-            {/* Títulos Pendentes */}
-            <Card sx={{ 
-              border: '2px solid #F44336',
-              transition: 'transform 0.2s ease-in-out',
-              '&:hover': { transform: 'translateY(-4px)' }
-            }}>
-              <CardContent sx={{ textAlign: 'center', py: 3 }}>
-                <PendingActionsIcon sx={{ 
-                  fontSize: 48, 
-                  mb: 1, 
-                  color: '#F44336'
-                }} />
-                <Typography variant="h4" component="div" sx={{ 
-                  fontWeight: 'bold', 
-                  mb: 1,
-                  color: '#F44336'
-                }}>
-                  {calcularMetricasDashboard().titulosPendentes.quantidade}
-                </Typography>
-                <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', mb: 1, color: '#F44336' }}>
-                  R$ {formatarDecimal(calcularMetricasDashboard().titulosPendentes.valor)}
-                </Typography>
-                <Typography variant="body1" color="textSecondary">
-                  Títulos Pendentes
-                </Typography>
-              </CardContent>
-            </Card>
-
-            {/* Total Geral */}
-            <Card sx={{ 
-              border: '2px solid #FF9800',
-              transition: 'transform 0.2s ease-in-out',
-              '&:hover': { transform: 'translateY(-4px)' }
-            }}>
-              <CardContent sx={{ textAlign: 'center', py: 3 }}>
-                <AssignmentIcon sx={{ fontSize: 48, mb: 1, color: '#FF9800' }} />
-                <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', mb: 1, color: '#FF9800' }}>
-                  {calcularMetricasDashboard().totalGeral.quantidade}
-                </Typography>
-                <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', mb: 1, color: '#FF9800' }}>
-                  R$ {formatarDecimal(calcularMetricasDashboard().totalGeral.valor)}
-                </Typography>
-                <Typography variant="body1" color="textSecondary">
-                  Total Geral
-                </Typography>
-              </CardContent>
-            </Card>
-          </Box>
-        </CardContent>
-      </Card>
-
-      {/* Dashboard Mensal */}
-      {filtros.dataInicial && filtros.dataFinal ? (
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6" gutterBottom color="primary" sx={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CalendarMonthIcon />
-                📈 Dashboard Mensal ({filtros.dataInicial?.split('-').reverse().join('/')} a {filtros.dataFinal?.split('-').reverse().join('/')})
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button
-                  variant="outlined"
-                  startIcon={<PictureAsPdfIcon />}
-                  onClick={handleGerarPDFMensal}
-                  size="small"
-                >
-                  PDF Mensal
-                </Button>
-                <Button
-                  variant="outlined"
-                  onClick={() => setMostrarDashboardMensal(!mostrarDashboardMensal)}
-                  endIcon={mostrarDashboardMensal ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                >
-                  {mostrarDashboardMensal ? 'Ocultar' : 'Mostrar'} Detalhes
-                </Button>
-              </Box>
-            </Box>
-            
-            <Collapse in={mostrarDashboardMensal}>
-              <TableContainer component={Paper} sx={{ mt: 2 }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Mês/Ano</TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 'bold', color: '#2196F3' }}>Títulos Pagos</TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 'bold', color: '#F44336' }}>Títulos Pendentes</TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 'bold', color: '#FF9800' }}>Total Geral</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {calcularDashboardMensal().map((dadosMes, index) => (
-                      <TableRow key={`${dadosMes.mes}-${dadosMes.ano}`} sx={{ '&:nth-of-type(odd)': { backgroundColor: '#fafafa' } }}>
-                        <TableCell sx={{ fontWeight: 'bold' }}>
-                          {dadosMes.mes} {dadosMes.ano}
-                        </TableCell>
-                        <TableCell align="center">
-                          <Box sx={{ color: '#2196F3' }}>
-                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                              {dadosMes.metricas.titulosPagos.quantidade} títulos
-                            </Typography>
-                            <Typography variant="body2">
-                              R$ {formatarDecimal(dadosMes.metricas.titulosPagos.valor)}
-                            </Typography>
-                          </Box>
-                        </TableCell>
-                        <TableCell align="center">
-                          <Box sx={{ color: '#F44336' }}>
-                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                              {dadosMes.metricas.titulosPendentes.quantidade} títulos
-                            </Typography>
-                            <Typography variant="body2">
-                              R$ {formatarDecimal(dadosMes.metricas.titulosPendentes.valor)}
-                            </Typography>
-                          </Box>
-                        </TableCell>
-                        <TableCell align="center">
-                          <Box sx={{ color: '#FF9800' }}>
-                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                              {dadosMes.metricas.totalGeral.quantidade} títulos
-                            </Typography>
-                            <Typography variant="body2">
-                              R$ {formatarDecimal(dadosMes.metricas.totalGeral.valor)}
-                            </Typography>
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {calcularDashboardMensal().length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={4} align="center" sx={{ py: 3, color: 'text.secondary' }}>
-                          Nenhum dado encontrado para o período selecionado
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Collapse>
-          </CardContent>
-        </Card>
-      ) : (
-        // Dica para mostrar dashboard mensal
-        <Card sx={{ mb: 3, backgroundColor: '#f8f9fa', border: '1px dashed #dee2e6' }}>
-          <CardContent sx={{ textAlign: 'center', py: 2 }}>
-            <CalendarMonthIcon sx={{ fontSize: 40, color: '#6c757d', mb: 1 }} />
-            <Typography variant="body1" color="textSecondary" sx={{ mb: 1 }}>
-              💡 <strong>Dica:</strong> Selecione um período (Data Inicial e Final) para visualizar o dashboard mensal
-            </Typography>
-            <Typography variant="body2" color="textSecondary">
-              O dashboard mensal mostra a evolução dos títulos mês a mês no período selecionado
-            </Typography>
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
             <Typography variant="h6">Extrato de Títulos</Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button 
+                variant="outlined" 
+                startIcon={<TableViewIcon />} 
+                onClick={() => setModalRelatorioTabulado(true)}
+                color="secondary"
+              >
+                Relatório Tabulado
+              </Button>
               <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleGerarPDF}>Gerar PDF</Button>
             </Box>
           </Box>

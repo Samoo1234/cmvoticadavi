@@ -122,12 +122,27 @@ const EmissaoTitulos: React.FC = () => {
   const [dadosTabulados, setDadosTabulados] = useState<any[]>([]);
   const [dadosPorFilial, setDadosPorFilial] = useState<any>({});
   const [filialAtiva, setFilialAtiva] = useState(0);
+  
+  // Estado para seleção de filiais no breakdown mensal
+  const [filiaisSelecionadasBreakdown, setFiliaisSelecionadasBreakdown] = useState<number[]>([]);
+  
+  // Inicializar seleção de filiais quando breakdown for carregado
+  useEffect(() => {
+    const breakdownData = (filtros.dataInicial && filtros.dataFinal) && !filtroTipo.todos ? calcularBreakdownMensal() : [];
+    if (breakdownData.length > 0 && !filtros.filial) {
+      const todasFiliais = breakdownData.map((d: any) => d.filialId);
+      setFiliaisSelecionadasBreakdown(todasFiliais);
+    }
+  }, [filtros.dataInicial, filtros.dataFinal, filtroTipo.todos, filtros.filial]);
   const [configRelatorioTabulado, setConfigRelatorioTabulado] = useState({
     filiais: [] as number[],
     filiaisSelecionadas: [] as number[],
     dataInicial: '',
     dataFinal: ''
   });
+  
+  // Estado para controlar checkboxes das filiais no breakdown mensal
+  const [filiaisSelecionadasPDF, setFiliaisSelecionadasPDF] = useState<{[filialNome: string]: boolean}>({});
   
   
 
@@ -893,6 +908,402 @@ const EmissaoTitulos: React.FC = () => {
     // Caso contrário, gerar PDF geral
   };
 
+  // Função para alternar seleção de filial no breakdown
+  const handleToggleFilialPDF = (filialNome: string) => {
+    setFiliaisSelecionadasPDF(prev => ({
+      ...prev,
+      [filialNome]: !prev[filialNome]
+    }));
+  };
+
+  // Função para gerar PDF individual de uma filial
+  const handleGerarPDFFilial = (filialNome: string, dadosFilial: any) => {
+    console.log(`Gerando PDF individual para filial: ${filialNome}`);
+    // TODO: Implementar geração de PDF individual
+    gerarPDFBreakdownFilial(filialNome, dadosFilial);
+  };
+
+  // Função para gerar PDF das filiais selecionadas
+  const handleGerarPDFSelecionadas = (breakdownData: any[]) => {
+    const filiaisSelecionadas = breakdownData.filter(dados => 
+      filiaisSelecionadasPDF[dados.filial]
+    );
+    
+    if (filiaisSelecionadas.length === 0) {
+      setAlert({
+        open: true,
+        message: 'Selecione pelo menos uma filial para gerar o PDF',
+        severity: 'warning'
+      });
+      return;
+    }
+    
+    console.log(`Gerando PDF consolidado para ${filiaisSelecionadas.length} filiais`);
+    gerarPDFBreakdownConsolidado(filiaisSelecionadas);
+  };
+
+  // Função para gerar PDF individual de uma filial (EXATO COMO A TELA)
+  const gerarPDFBreakdownFilial = (filialNome: string, dadosFilial: any) => {
+    import('jspdf').then(({ default: jsPDF }) => {
+      const doc = new jsPDF('portrait', 'mm', 'a4'); // RETRATO como solicitado
+      
+      // Configurações para retrato
+      const margin = 8;
+      const pageWidth = doc.internal.pageSize.width;
+      const pageHeight = doc.internal.pageSize.height;
+      let currentY = margin + 5;
+      
+      // Cabeçalho
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`BREAKDOWN MENSAL - ${filialNome.toUpperCase()}`, pageWidth / 2, currentY, { align: 'center' });
+      currentY += 6;
+      
+      const periodo = `${filtros.dataInicial?.split('-').reverse().join('/')} a ${filtros.dataFinal?.split('-').reverse().join('/')}`;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Período: ${periodo}`, pageWidth / 2, currentY, { align: 'center' });
+      currentY += 10;
+      
+      // Definir larguras das colunas (EXATO COMO A TELA)
+      const colMesWidth = 20;
+      const colTipoWidth = 24; // Insumos, Lentes, etc.
+      const colSubWidth = 12; // Pendentes/Pagos
+      const colTotalWidth = 24;
+      
+      // Linha 1: Cabeçalhos principais
+      doc.setFillColor(240, 240, 240);
+      doc.rect(margin, currentY, pageWidth - 2 * margin, 6, 'F');
+      
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.1);
+      
+      let xPos = margin;
+      
+      // Mês/Ano
+      doc.rect(xPos, currentY, colMesWidth, 12); // Altura dupla
+      doc.text('Mês/Ano', xPos + colMesWidth/2, currentY + 8, { align: 'center' });
+      xPos += colMesWidth;
+      
+      // Tipos de título (como na tela)
+      const tiposNaTela = ['Insumos', 'Lentes', 'Armações', 'Diversos', 'Equipamentos'];
+      tiposNaTela.forEach(tipoNome => {
+        doc.rect(xPos, currentY, colTipoWidth, 6);
+        doc.text(tipoNome, xPos + colTipoWidth/2, currentY + 4, { align: 'center' });
+        xPos += colTipoWidth;
+      });
+      
+      // TOTAL
+      doc.rect(xPos, currentY, colTotalWidth, 12); // Altura dupla
+      doc.text('TOTAL', xPos + colTotalWidth/2, currentY + 8, { align: 'center' });
+      
+      currentY += 6;
+      
+      // Linha 2: Sub-cabeçalhos (Pendentes/Pagos)
+      xPos = margin + colMesWidth;
+      tiposNaTela.forEach(() => {
+        doc.rect(xPos, currentY, colSubWidth, 6);
+        doc.text('Pendentes', xPos + colSubWidth/2, currentY + 4, { align: 'center' });
+        xPos += colSubWidth;
+        
+        doc.rect(xPos, currentY, colSubWidth, 6);
+        doc.text('Pagos', xPos + colSubWidth/2, currentY + 4, { align: 'center' });
+        xPos += colSubWidth;
+      });
+      
+      currentY += 6;
+      
+      // Dados por mês
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      
+      dadosFilial.meses.forEach((mes: any, mesIndex: number) => {
+        const isEven = mesIndex % 2 === 0;
+        if (isEven) {
+          doc.setFillColor(250, 250, 250);
+          doc.rect(margin, currentY, pageWidth - 2 * margin, 12, 'F');
+        }
+        
+        xPos = margin;
+        
+        // Mês/Ano
+        doc.rect(xPos, currentY, colMesWidth, 12);
+        doc.setFont('helvetica', 'bold');
+        doc.text(mes.mes, xPos + colMesWidth/2, currentY + 8, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+        xPos += colMesWidth;
+        
+        // Para cada tipo
+        tiposNaTela.forEach(tipoNome => {
+          const tipoMes = mes.tipos[tipoNome] || { pendentes: { quantidade: 0, valor: 0 }, pagos: { quantidade: 0, valor: 0 } };
+          
+          // Pendentes
+          doc.rect(xPos, currentY, colSubWidth, 12);
+          if (tipoMes.pendentes && tipoMes.pendentes.quantidade > 0) {
+            doc.text(tipoMes.pendentes.quantidade.toString(), xPos + colSubWidth/2, currentY + 4, { align: 'center' });
+            doc.text(`R$ ${tipoMes.pendentes.valor.toFixed(2)}`, xPos + colSubWidth/2, currentY + 9, { align: 'center' });
+          } else {
+            doc.text('0', xPos + colSubWidth/2, currentY + 4, { align: 'center' });
+            doc.text('R$ 0,00', xPos + colSubWidth/2, currentY + 9, { align: 'center' });
+          }
+          xPos += colSubWidth;
+          
+          // Pagos
+          doc.rect(xPos, currentY, colSubWidth, 12);
+          if (tipoMes.pagos && tipoMes.pagos.quantidade > 0) {
+            doc.text(tipoMes.pagos.quantidade.toString(), xPos + colSubWidth/2, currentY + 4, { align: 'center' });
+            doc.text(`R$ ${tipoMes.pagos.valor.toFixed(2)}`, xPos + colSubWidth/2, currentY + 9, { align: 'center' });
+          } else {
+            doc.text('0', xPos + colSubWidth/2, currentY + 4, { align: 'center' });
+            doc.text('R$ 0,00', xPos + colSubWidth/2, currentY + 9, { align: 'center' });
+          }
+          xPos += colSubWidth;
+        });
+        
+        // Total do mês
+        doc.rect(xPos, currentY, colTotalWidth, 12);
+        doc.setFont('helvetica', 'bold');
+        doc.text(mes.total.quantidade.toString(), xPos + colTotalWidth/2, currentY + 4, { align: 'center' });
+        doc.text(`R$ ${mes.total.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, xPos + colTotalWidth/2, currentY + 9, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+        
+        currentY += 12;
+      });
+      
+      // Linha TOTAL (como na tela)
+      doc.setFillColor(52, 144, 220); // Azul como na tela
+      doc.rect(margin, currentY, pageWidth - 2 * margin, 12, 'F');
+      
+      doc.setTextColor(255, 255, 255); // Texto branco
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      
+      xPos = margin;
+      
+      // TOTAL
+      doc.rect(xPos, currentY, colMesWidth, 12);
+      doc.text('TOTAL', xPos + colMesWidth/2, currentY + 8, { align: 'center' });
+      xPos += colMesWidth;
+      
+      // Totais por tipo
+      tiposNaTela.forEach(tipoNome => {
+        const totalTipo = dadosFilial.meses.reduce((acc: any, mes: any) => {
+          const tipoMes = mes.tipos[tipoNome] || { pendentes: { quantidade: 0, valor: 0 }, pagos: { quantidade: 0, valor: 0 } };
+          return {
+            pendentes: {
+              quantidade: acc.pendentes.quantidade + (tipoMes.pendentes?.quantidade || 0),
+              valor: acc.pendentes.valor + (tipoMes.pendentes?.valor || 0)
+            },
+            pagos: {
+              quantidade: acc.pagos.quantidade + (tipoMes.pagos?.quantidade || 0),
+              valor: acc.pagos.valor + (tipoMes.pagos?.valor || 0)
+            }
+          };
+        }, { pendentes: { quantidade: 0, valor: 0 }, pagos: { quantidade: 0, valor: 0 } });
+        
+        // Pendentes
+        doc.rect(xPos, currentY, colSubWidth, 12);
+        doc.text(totalTipo.pendentes.quantidade.toString(), xPos + colSubWidth/2, currentY + 4, { align: 'center' });
+        doc.text(`R$ ${totalTipo.pendentes.valor.toFixed(2)}`, xPos + colSubWidth/2, currentY + 9, { align: 'center' });
+        xPos += colSubWidth;
+        
+        // Pagos
+        doc.rect(xPos, currentY, colSubWidth, 12);
+        doc.text(totalTipo.pagos.quantidade.toString(), xPos + colSubWidth/2, currentY + 4, { align: 'center' });
+        doc.text(`R$ ${totalTipo.pagos.valor.toFixed(2)}`, xPos + colSubWidth/2, currentY + 9, { align: 'center' });
+        xPos += colSubWidth;
+      });
+      
+      // Total geral
+      doc.rect(xPos, currentY, colTotalWidth, 12);
+      doc.text(dadosFilial.total.quantidade.toString(), xPos + colTotalWidth/2, currentY + 4, { align: 'center' });
+      doc.text(`R$ ${dadosFilial.total.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, xPos + colTotalWidth/2, currentY + 9, { align: 'center' });
+      
+      doc.setTextColor(0, 0, 0); // Voltar texto preto
+      
+      // Rodapé
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, margin, pageHeight - 10);
+      doc.text(`Sistema de Gestão - ${filialNome}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
+      
+      // Salvar
+      doc.save(`breakdown-${filialNome.replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.pdf`);
+      
+      setAlert({
+        open: true,
+        message: `PDF profissional da filial ${filialNome} gerado com sucesso!`,
+        severity: 'success'
+      });
+    });
+  };
+
+  // Função para gerar PDF consolidado das filiais selecionadas (EXATO COMO A TELA)
+  const gerarPDFBreakdownConsolidado = (filiaisSelecionadas: any[]) => {
+    import('jspdf').then(({ default: jsPDF }) => {
+      const doc = new jsPDF('portrait', 'mm', 'a4'); // RETRATO como solicitado
+      
+      // Configurações para retrato
+      const margin = 8;
+      const pageWidth = doc.internal.pageSize.width;
+      const pageHeight = doc.internal.pageSize.height;
+      let currentY = margin + 5;
+      
+      // Cabeçalho
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('BREAKDOWN CONSOLIDADO - FILIAIS SELECIONADAS', pageWidth / 2, currentY, { align: 'center' });
+      currentY += 6;
+      
+      const periodo = `${filtros.dataInicial?.split('-').reverse().join('/')} a ${filtros.dataFinal?.split('-').reverse().join('/')}`;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Período: ${periodo}`, pageWidth / 2, currentY, { align: 'center' });
+      currentY += 4;
+      
+      doc.setFontSize(8);
+      doc.text(`${filiaisSelecionadas.length} filiais selecionadas`, pageWidth / 2, currentY, { align: 'center' });
+      currentY += 10;
+      
+      // Criar tabela consolidada (FORMATO DA TELA)
+      if (filiaisSelecionadas.length > 0) {
+        // Definir larguras das colunas (EXATO COMO A TELA)
+        const colFilialWidth = 25;
+        const colTipoWidth = 22; // Insumos, Lentes, etc.
+        const colSubWidth = 11; // Pendentes/Pagos
+        const colTotalWidth = 22;
+        
+        // Cabeçalho da tabela
+        doc.setFillColor(240, 240, 240);
+        doc.rect(margin, currentY, pageWidth - 2 * margin, 8, 'F');
+        
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.2);
+        
+        // Cabeçalho: Filial
+        doc.rect(margin, currentY, colFilialWidth, 8);
+        doc.text('FILIAL', margin + 2, currentY + 5);
+        
+        // Cabeçalhos dos meses
+        let xPos = margin + colFilialWidth;
+        filiaisSelecionadas[0].meses.forEach((mes: any) => {
+          doc.rect(xPos, currentY, colMesWidth, 8);
+          doc.text(mes.mes, xPos + colMesWidth/2, currentY + 5, { align: 'center' });
+          xPos += colMesWidth;
+        });
+        
+        // Cabeçalho: Total
+        doc.rect(xPos, currentY, colTotalWidth, 8);
+        doc.text('TOTAL', xPos + colTotalWidth/2, currentY + 5, { align: 'center' });
+        currentY += 8;
+        
+        // Dados das filiais
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        
+        let totalGeralQtd = 0;
+        let totalGeralValor = 0;
+        const totaisPorMes: any[] = [];
+        
+        filiaisSelecionadas.forEach((dadosFilial, filialIndex) => {
+          const isEven = filialIndex % 2 === 0;
+          if (isEven) {
+            doc.setFillColor(250, 250, 250);
+            doc.rect(margin, currentY, pageWidth - 2 * margin, 8, 'F');
+          }
+          
+          // Nome da filial
+          doc.rect(margin, currentY, colFilialWidth, 8);
+          doc.setFont('helvetica', 'bold');
+          doc.text(dadosFilial.filial, margin + 2, currentY + 3);
+          doc.setFont('helvetica', 'normal');
+          
+          // Dados por mês
+          xPos = margin + colFilialWidth;
+          dadosFilial.meses.forEach((mes: any, mesIndex: number) => {
+            doc.rect(xPos, currentY, colMesWidth, 8);
+            
+            if (mes.total.quantidade > 0) {
+              doc.text(`${mes.total.quantidade} títulos`, xPos + 2, currentY + 3);
+              doc.text(`R$ ${mes.total.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, xPos + 2, currentY + 6);
+            } else {
+              doc.text('-', xPos + colMesWidth/2, currentY + 4.5, { align: 'center' });
+            }
+            
+            // Acumular totais por mês
+            if (!totaisPorMes[mesIndex]) {
+              totaisPorMes[mesIndex] = { quantidade: 0, valor: 0 };
+            }
+            totaisPorMes[mesIndex].quantidade += mes.total.quantidade;
+            totaisPorMes[mesIndex].valor += mes.total.valor;
+            
+            xPos += colMesWidth;
+          });
+          
+          // Total da filial
+          doc.rect(xPos, currentY, colTotalWidth, 8);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`${dadosFilial.total.quantidade} títulos`, xPos + 2, currentY + 3);
+          doc.text(`R$ ${dadosFilial.total.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, xPos + 2, currentY + 6);
+          doc.setFont('helvetica', 'normal');
+          
+          totalGeralQtd += dadosFilial.total.quantidade;
+          totalGeralValor += dadosFilial.total.valor;
+          
+          currentY += 8;
+          
+          // Verificar se precisa de nova página
+          if (currentY > pageHeight - 40) {
+            doc.addPage();
+            currentY = margin;
+          }
+        });
+        
+        // Linha de totais gerais
+        doc.setFillColor(200, 200, 200);
+        doc.rect(margin, currentY, pageWidth - 2 * margin, 10, 'F');
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        
+        // Total geral
+        doc.rect(margin, currentY, colFilialWidth, 10);
+        doc.text('TOTAL GERAL', margin + 2, currentY + 6);
+        
+        xPos = margin + colFilialWidth;
+        totaisPorMes.forEach((totalMes) => {
+          doc.rect(xPos, currentY, colMesWidth, 10);
+          doc.text(`${totalMes.quantidade} títulos`, xPos + 2, currentY + 4);
+          doc.text(`R$ ${totalMes.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, xPos + 2, currentY + 7);
+          xPos += colMesWidth;
+        });
+        
+        doc.rect(xPos, currentY, colTotalWidth, 10);
+        doc.text(`${totalGeralQtd} títulos`, xPos + 2, currentY + 4);
+        doc.text(`R$ ${totalGeralValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, xPos + 2, currentY + 7);
+      }
+      
+      // Rodapé
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, margin, pageHeight - 10);
+      doc.text(`Sistema de Gestão - Relatório Consolidado`, pageWidth - margin, pageHeight - 10, { align: 'right' });
+      
+      // Salvar
+      doc.save(`breakdown-consolidado-${filiaisSelecionadas.length}-filiais-${new Date().toISOString().slice(0, 10)}.pdf`);
+      
+      setAlert({
+        open: true,
+        message: `PDF consolidado profissional de ${filiaisSelecionadas.length} filiais gerado com sucesso!`,
+        severity: 'success'
+      });
+    });
+  };
+
   // Função para calcular totais gerais (sem filtro de data) para comparação
   const calcularTotaisGerais = () => {
     let titulosTotais = [...titulos];
@@ -1084,8 +1495,12 @@ const EmissaoTitulos: React.FC = () => {
         valorPagos: meses.reduce((total, mes) => parseDecimalSeguro(somarValores(total, mes.total.valorPagos || 0)), 0)
       };
 
+      // Encontrar o ID da filial
+      const filialObj = filiais.find(f => f.nome === filialNome);
+      
       return {
         filial: filialNome,
+        filialId: filialObj?.id || 0,
         meses,
         total: totalFilial
       };
@@ -2170,12 +2585,70 @@ const EmissaoTitulos: React.FC = () => {
                   </Typography>
                 </Typography>
 
+                {/* Botões de Controle para PDF */}
+                {!filtros.filial && breakdownData.length > 1 && (
+                  <Box sx={{ mb: 3, display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        const novaSelecao: {[key: string]: boolean} = {};
+                        breakdownData.forEach((d: any) => {
+                          novaSelecao[d.filial] = true;
+                        });
+                        setFiliaisSelecionadasPDF(novaSelecao);
+                      }}
+                      size="small"
+                    >
+                      ☑️ Marcar Todas
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      onClick={() => setFiliaisSelecionadasPDF({})}
+                      size="small"
+                    >
+                      ☐ Desmarcar Todas
+                    </Button>
+                    <Button
+                      variant="contained"
+                      startIcon={<PictureAsPdfIcon />}
+                      onClick={() => handleGerarPDFSelecionadas(breakdownData)}
+                      color="success"
+                      size="small"
+                      disabled={Object.values(filiaisSelecionadasPDF).filter(Boolean).length === 0}
+                    >
+                      📄 PDF Selecionadas ({Object.values(filiaisSelecionadasPDF).filter(Boolean).length})
+                    </Button>
+                  </Box>
+                )}
+
                 {breakdownData.map((dadosFilial, index) => (
                 <Box key={index} sx={{ mb: 3 }}>
                   {!filtros.filial && (
-                    <Typography variant="h6" sx={{ mb: 2, color: 'primary.main', fontWeight: 'bold' }}>
-                      🏪 {dadosFilial.filial.toUpperCase()}
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                      <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 'bold' }}>
+                        🏪 {dadosFilial.filial.toUpperCase()}
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                          {dadosFilial.total.quantidade} títulos - R$ {formatarDecimal(dadosFilial.total.valor)}
+                        </Typography>
+                        <Checkbox
+                          checked={filiaisSelecionadasPDF[dadosFilial.filial] || false}
+                          onChange={() => handleToggleFilialPDF(dadosFilial.filial)}
+                          color="primary"
+                          size="small"
+                        />
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={<PictureAsPdfIcon />}
+                          onClick={() => handleGerarPDFFilial(dadosFilial.filial, dadosFilial)}
+                          sx={{ minWidth: 'auto', px: 1 }}
+                        >
+                          PDF
+                        </Button>
+                      </Box>
+                    </Box>
                   )}
 
                   <TableContainer component={Paper} sx={{ mb: 2 }}>

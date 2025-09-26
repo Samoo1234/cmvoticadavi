@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import { parseDecimalSeguro, formatarDecimal, somarValores } from '../utils/decimalUtils';
 import type { DespesaFixaCompleta } from './despesasFixasService';
 import type { DespesaDiversaCompleta } from './despesasDiversasService';
@@ -31,12 +31,12 @@ export class RelatoriosPDFService {
   private lineHeight: number;
 
   constructor() {
-    this.doc = new jsPDF('landscape');
+    this.doc = new jsPDF('portrait');
     this.pageHeight = this.doc.internal.pageSize.height;
     this.pageWidth = this.doc.internal.pageSize.width;
-    this.currentY = 20;
-    this.margin = 20;
-    this.lineHeight = 6;
+    this.currentY = 15;
+    this.margin = 15;
+    this.lineHeight = 4;
   }
 
   // Método para adicionar cabeçalho
@@ -66,7 +66,7 @@ export class RelatoriosPDFService {
     this.doc.setFontSize(8);
     this.doc.setFont('helvetica', 'normal');
     this.doc.text(`Gerado em: ${dataHora}`, this.margin, this.pageHeight - 10);
-    this.doc.text(`Página ${this.doc.getCurrentPageInfo().pageNumber}`, this.pageWidth - this.margin, this.pageHeight - 10, { align: 'right' });
+    this.doc.text(`Página ${(this.doc as any).internal.getCurrentPageInfo().pageNumber}`, this.pageWidth - this.margin, this.pageHeight - 10, { align: 'right' });
   }
 
   // Método para verificar se precisa de nova página
@@ -562,6 +562,158 @@ export class RelatoriosPDFService {
   // Método para visualizar o PDF
   public visualizar() {
     window.open(this.doc.output('bloburl'), '_blank');
+  }
+
+  // Criar tabela de breakdown usando autoTable (versão funcional)
+  private criarTabelaBreakdownSimples(dadosFilial: any) {
+    const tipos = ['Insumos', 'Lentes', 'Armações', 'Diversos', 'Equipamentos'];
+    
+    // Cabeçalho agrupado (2 linhas)
+    const headers = [
+      ['Mês/Ano', 'Insumos', 'Lentes', 'Armações', 'Diversos', 'Equipamentos', 'TOTAL'],
+      ['', 'P', 'Pg', 'P', 'Pg', 'P', 'Pg', 'P', 'Pg', 'P', 'Pg', 'P', 'Pg']
+    ];
+    
+    // Dados dos meses
+    const tableData: any[] = [];
+    dadosFilial.meses.forEach((mes: any) => {
+      const row = [mes.mes];
+      
+      tipos.forEach(tipo => {
+        const dadosTipo = mes.tipos[tipo] || { 
+          pendentes: { quantidade: 0, valor: 0 },
+          pagos: { quantidade: 0, valor: 0 }
+        };
+        
+        row.push(`${dadosTipo.pendentes.quantidade}`);
+        row.push(`${formatarDinheiro(dadosTipo.pagos.valor)}`);
+      });
+      
+      row.push(`${mes.total.pendentes || 0}`);
+      row.push(`${formatarDinheiro(mes.total.valorPagos || 0)}`);
+      
+      tableData.push(row);
+    });
+    
+    // Linha de total
+    const totalRow = ['TOTAL'];
+    tipos.forEach(tipo => {
+      const totalTipo = dadosFilial.meses.reduce((acc: any, mes: any) => ({
+        pendentes: acc.pendentes + (mes.tipos[tipo]?.pendentes?.quantidade || 0),
+        pagos: acc.pagos + (mes.tipos[tipo]?.pagos?.quantidade || 0),
+        valorPendentes: parseDecimalSeguro(somarValores(acc.valorPendentes, mes.tipos[tipo]?.pendentes?.valor || 0)),
+        valorPagos: parseDecimalSeguro(somarValores(acc.valorPagos, mes.tipos[tipo]?.pagos?.valor || 0))
+      }), { pendentes: 0, pagos: 0, valorPendentes: 0, valorPagos: 0 });
+      
+      totalRow.push(`${totalTipo.pendentes}`);
+      totalRow.push(`${formatarDinheiro(totalTipo.valorPagos)}`);
+    });
+    
+    totalRow.push(`${dadosFilial.total.pendentes || 0}`);
+    totalRow.push(`${formatarDinheiro(dadosFilial.total.valorPagos || 0)}`);
+    
+    tableData.push(totalRow);
+    
+    // Criar tabela com autoTable
+    autoTable(this.doc, {
+      startY: this.currentY,
+      head: headers,
+      body: tableData,
+      theme: 'grid',
+      headStyles: { 
+        fillColor: [25, 118, 210],
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 8
+      },
+      bodyStyles: { 
+        fontSize: 7,
+        cellPadding: 3
+      },
+      alternateRowStyles: { fillColor: [245, 245, 245] },
+      margin: { left: this.margin, right: this.margin },
+      tableWidth: 'auto',
+      columnStyles: {
+        0: { cellWidth: 20 }, // Mês/Ano
+        1: { cellWidth: 15 }, // Insumos P
+        2: { cellWidth: 15 }, // Insumos Pg
+        3: { cellWidth: 15 }, // Lentes P
+        4: { cellWidth: 15 }, // Lentes Pg
+        5: { cellWidth: 15 }, // Armações P
+        6: { cellWidth: 15 }, // Armações Pg
+        7: { cellWidth: 15 }, // Diversos P
+        8: { cellWidth: 15 }, // Diversos Pg
+        9: { cellWidth: 15 }, // Equipamentos P
+        10: { cellWidth: 15 }, // Equipamentos Pg
+        11: { cellWidth: 18 }, // TOTAL P
+        12: { cellWidth: 18 }  // TOTAL Pg
+      }
+    });
+    
+    // Atualizar posição Y após a tabela
+    this.currentY = (this.doc as any).lastAutoTable?.finalY ? 
+      (this.doc as any).lastAutoTable.finalY + 10 : 
+      this.currentY + 100;
+  }
+
+  // Relatório de Breakdown Mensal por Filial
+  public gerarBreakdownMensal(
+    breakdownData: any[],
+    filtros: {
+      dataInicial: string;
+      dataFinal: string;
+      filial?: string;
+    }
+  ) {
+    const titulo = filtros.filial ? 
+      `BREAKDOWN MENSAL - ${filtros.filial.toUpperCase()}` :
+      'BREAKDOWN MENSAL POR FILIAL';
+    
+    const subtitulo = `Período: ${formatDateToBrazilian(filtros.dataInicial)} até ${formatDateToBrazilian(filtros.dataFinal)}`;
+    
+    this.addHeader(titulo, subtitulo);
+    
+    // Processar cada filial
+    breakdownData.forEach((dadosFilial, filialIndex) => {
+      // Verificar se precisa de nova página
+      this.checkNewPage(30);
+      
+      // Título da filial (mais compacto)
+      this.doc.setFontSize(12);
+      this.doc.setFont('helvetica', 'bold');
+      this.doc.text(`${dadosFilial.filial.toUpperCase()}`, this.margin, this.currentY);
+      this.currentY += 6;
+      
+      // Resumo da filial (mais compacto)
+      this.doc.setFontSize(9);
+      this.doc.setFont('helvetica', 'normal');
+      this.doc.text(
+        `Total: ${dadosFilial.total.quantidade} títulos - ${formatarDinheiro(dadosFilial.total.valor)}`, 
+        this.margin, 
+        this.currentY
+      );
+      this.currentY += 8;
+      
+      // Criar tabela usando autoTable (versão simplificada)
+      this.criarTabelaBreakdownSimples(dadosFilial);
+      
+      // Adicionar quebra de página entre filiais apenas se necessário
+      if (filialIndex < breakdownData.length - 1) {
+        // Verificar se há espaço suficiente para a próxima filial
+        if (this.currentY > this.pageHeight - 100) {
+          this.doc.addPage();
+          this.currentY = 15;
+        } else {
+          // Adicionar apenas um pequeno espaço
+          this.currentY += 10;
+        }
+      }
+    });
+    
+    // Adicionar rodapé
+    this.addFooter();
+    
+    return this.doc;
   }
 }
 

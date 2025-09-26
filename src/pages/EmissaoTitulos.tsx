@@ -95,7 +95,6 @@ const EmissaoTitulos: React.FC = () => {
   const [titulosFiltrados, setTitulosFiltrados] = useState<TituloCompleto[]>([]);
   const [filtros, setFiltros] = useState({ tipo: '', fornecedor: '', filial: '', dataInicial: '', dataFinal: '' });
   const [filtroTipo, setFiltroTipo] = useState({ vencimento: false, pagamento: false, todos: true });
-  const [mostrarPagos, setMostrarPagos] = useState(false);
   const [tipos, setTipos] = useState<{ id: number, nome: string }[]>([]);
   const [fornecedores, setFornecedores] = useState<{ id: number, nome: string }[]>([]);
   const [filiais, setFiliais] = useState<{ id: number, nome: string }[]>([]);
@@ -251,9 +250,9 @@ const EmissaoTitulos: React.FC = () => {
   // Aplicar filtros sempre que os títulos ou filtros mudarem
   useEffect(() => {
     if (titulos.length > 0) {
-      aplicarFiltros(filtros, filtroTipo, mostrarPagos);
+      aplicarFiltros(filtros, filtroTipo);
     }
-  }, [titulos, filtros, filtroTipo, mostrarPagos]);
+  }, [titulos, filtros, filtroTipo]);
 
   const handleFiltroChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const novosFiltros = { ...filtros, [e.target.name]: e.target.value };
@@ -280,19 +279,11 @@ const EmissaoTitulos: React.FC = () => {
     // O useEffect vai aplicar os filtros automaticamente
   };
 
-  const handleMostrarPagosChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const novoMostrarPagos = e.target.checked;
-    setMostrarPagos(novoMostrarPagos);
-    // O useEffect vai aplicar os filtros automaticamente
-  };
 
-  const aplicarFiltros = (filtrosAtuais = filtros, tiposFiltro = filtroTipo, incluirPagos = mostrarPagos) => {
+  const aplicarFiltros = (filtrosAtuais = filtros, tiposFiltro = filtroTipo) => {
     let resultado = [...titulos];
     
-    // PRIMEIRO: Filtrar por status de pagamento (por padrão, só mostra pendentes)
-    if (!incluirPagos) {
-      resultado = resultado.filter(titulo => titulo.status !== 'pago');
-    }
+    // Títulos pagos agora são sempre incluídos
     
     // Filtrar por tipo
     if (filtrosAtuais.tipo) {
@@ -916,9 +907,7 @@ const EmissaoTitulos: React.FC = () => {
     if (filtros.tipo) {
       titulosTotais = titulosTotais.filter(titulo => titulo.tipo === filtros.tipo);
     }
-    if (!mostrarPagos) {
-      titulosTotais = titulosTotais.filter(titulo => titulo.status !== 'pago');
-    }
+    // Títulos pagos agora são sempre incluídos nos totais gerais
 
     const totalQuantidade = titulosTotais.length;
     const totalValor = titulosTotais.reduce((total, titulo) => {
@@ -2028,22 +2017,6 @@ const EmissaoTitulos: React.FC = () => {
               </FormGroup>
             </Box>
             <Box sx={{ flex: '1 1 200px', minWidth: '150px' }}>
-              <FormGroup>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={mostrarPagos}
-                      onChange={handleMostrarPagosChange}
-                      color="warning"
-                    />
-                  }
-                  label="Incluir Títulos Pagos"
-                  sx={{ 
-                    color: mostrarPagos ? 'warning.main' : 'text.secondary',
-                    fontWeight: mostrarPagos ? 'bold' : 'normal'
-                  }}
-                />
-              </FormGroup>
             </Box>
             <Box sx={{ flex: '1 1 400px', minWidth: '300px' }}>
               <Stack direction="row" spacing={1}>

@@ -697,7 +697,7 @@ const EmissaoTitulos: React.FC = () => {
       const doc = relatorioService.gerarRelatorioTitulos(titulosFiltrados, filtrosRelatorio);
       
       const nomeArquivo = `relatorio-titulos-${new Date().toISOString().slice(0, 10)}.pdf`;
-      relatorioService.salvar(nomeArquivo);
+      doc.save(nomeArquivo);
       
       setAlert({
         open: true,

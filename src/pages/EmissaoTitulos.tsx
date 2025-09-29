@@ -49,14 +49,12 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import PaymentIcon from '@mui/icons-material/Payment';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import EditIcon from '@mui/icons-material/Edit';
-import TableViewIcon from '@mui/icons-material/TableView';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { filiaisService } from '../services/filiaisService';
 import { fornecedoresService } from '../services/fornecedoresService';
 import { tiposFornecedoresService } from '../services/tiposFornecedoresService';
 import { titulosService } from '../services/titulosService';
-import { RelatoriosPDFService } from '../services/relatoriosPDFService';
+import { relatoriosPDFService } from '../services/relatoriosPDFService';
 
 interface Titulo {
   id: number;
@@ -125,6 +123,139 @@ const EmissaoTitulos: React.FC = () => {
   
   // Estado para seleção de filiais no breakdown mensal
   const [filiaisSelecionadasBreakdown, setFiliaisSelecionadasBreakdown] = useState<number[]>([]);
+
+  // Helpers de data: tratar datas como "date-only" em local time para evitar drift UTC
+  const parseDateOnly = (isoLike: string | null | undefined): Date | null => {
+    if (!isoLike) return null;
+    // Espera 'YYYY-MM-DD' ou similar
+    const [y, m, d] = isoLike.split('T')[0].split('-').map(n => parseInt(n, 10));
+    if (!y || !m || !d) return null;
+    return new Date(y, m - 1, d); // local midnight
+  };
+  const startOfDay = (dt: Date | null): Date | null => {
+    if (!dt) return null;
+    const d = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 0, 0, 0, 0);
+    return d;
+  };
+  const endOfDay = (dt: Date | null): Date | null => {
+    if (!dt) return null;
+    const d = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 23, 59, 59, 999);
+    return d;
+  };
+  // Normaliza qualquer string de data para 'YYYY-MM-DD' (primeiros 10 chars)
+  const normalizeDateStr = (s?: string | null): string | null => {
+    if (!s) return null;
+    return s.slice(0, 10);
+  };
+  // Compara por string (YYYY-MM-DD) para evitar fuso/UTC
+  const dateInRangeStr = (d?: string | null, start?: string | null, end?: string | null) => {
+    const ds = normalizeDateStr(d);
+    const s = normalizeDateStr(start);
+    const e = normalizeDateStr(end);
+    if (!ds) return false;
+    if (s && ds < s) return false;
+    if (e && ds > e) return false;
+    return true;
+  };
+  
+  // Função para calcular breakdown mensal por filial
+  const calcularBreakdownMensal = () => {
+    if (!filtros.dataInicial || !filtros.dataFinal || filtroTipo.todos) {
+      return [];
+    }
+
+    // Agrupar títulos filtrados por filial e mês
+    const dadosAgrupados: { [filial: string]: { [mesAno: string]: TituloCompleto[] } } = {};
+
+    const titulosParaBreakdown = titulosFiltrados.filter(titulo => 
+      dateInRangeStr(titulo.vencimento, filtros.dataInicial, filtros.dataFinal)
+    );
+
+    titulosParaBreakdown.forEach(titulo => {
+      const ds = normalizeDateStr(titulo.vencimento)!; // já filtrado
+      const [yyyy, mm] = [ds.slice(0,4), ds.slice(5,7)];
+      const mesAno = `${mm}/${yyyy}`;
+      
+      if (!dadosAgrupados[titulo.filial]) {
+        dadosAgrupados[titulo.filial] = {};
+      }
+      
+      if (!dadosAgrupados[titulo.filial][mesAno]) {
+        dadosAgrupados[titulo.filial][mesAno] = [];
+      }
+      
+      dadosAgrupados[titulo.filial][mesAno].push(titulo);
+    });
+
+    // Converter para formato do breakdown
+    const breakdown = Object.keys(dadosAgrupados).map(filialNome => {
+      const filialObj = filiais.find(f => f.nome === filialNome);
+      const mesesData = dadosAgrupados[filialNome];
+      
+      const meses = Object.keys(mesesData).sort((a, b) => {
+        const [mesA, anoA] = a.split('/');
+        const [mesB, anoB] = b.split('/');
+        return new Date(parseInt(anoA), parseInt(mesA) - 1).getTime() - 
+               new Date(parseInt(anoB), parseInt(mesB) - 1).getTime();
+      }).map(mesAno => {
+        const titulosMes = mesesData[mesAno];
+        const tipos: { [tipo: string]: { pendentes: { quantidade: number; valor: number }; pagos: { quantidade: number; valor: number } } } = {};
+        
+        // Agrupar por tipo
+        titulosMes.forEach(titulo => {
+          const tipoNome = titulo.tipo || 'Sem Tipo';
+          if (!tipos[tipoNome]) {
+            tipos[tipoNome] = {
+              pendentes: { quantidade: 0, valor: 0 },
+              pagos: { quantidade: 0, valor: 0 }
+            };
+          }
+          
+          const valor = parseDecimalSeguro(titulo.valor || 0);
+          if (titulo.status === 'pendente') {
+            tipos[tipoNome].pendentes.quantidade += 1;
+            tipos[tipoNome].pendentes.valor += valor;
+          } else if (titulo.status === 'pago') {
+            tipos[tipoNome].pagos.quantidade += 1;
+            tipos[tipoNome].pagos.valor += valor;
+          }
+        });
+        
+        // Calcular totais do mês
+        const totalMes = Object.values(tipos).reduce((acc, tipo) => ({
+          quantidade: acc.quantidade + tipo.pendentes.quantidade + tipo.pagos.quantidade,
+          valor: acc.valor + tipo.pendentes.valor + tipo.pagos.valor,
+          pendentes: acc.pendentes + tipo.pendentes.quantidade,
+          valorPendentes: acc.valorPendentes + tipo.pendentes.valor,
+          valorPagos: acc.valorPagos + tipo.pagos.valor
+        }), { quantidade: 0, valor: 0, pendentes: 0, valorPendentes: 0, valorPagos: 0 });
+        
+        return {
+          mes: mesAno,
+          tipos,
+          total: totalMes
+        };
+      });
+      
+      // Calcular totais da filial
+      const totalFilial = meses.reduce((acc, mes) => ({
+        quantidade: acc.quantidade + mes.total.quantidade,
+        valor: acc.valor + mes.total.valor,
+        pendentes: acc.pendentes + mes.total.pendentes,
+        valorPendentes: acc.valorPendentes + mes.total.valorPendentes,
+        valorPagos: acc.valorPagos + mes.total.valorPagos
+      }), { quantidade: 0, valor: 0, pendentes: 0, valorPendentes: 0, valorPagos: 0 });
+      
+      return {
+        filial: filialNome,
+        filialId: filialObj?.id || 0,
+        meses,
+        total: totalFilial
+      };
+    });
+
+    return breakdown;
+  };
   
   // Inicializar seleção de filiais quando breakdown for carregado
   useEffect(() => {
@@ -319,27 +450,24 @@ const EmissaoTitulos: React.FC = () => {
     if (filtrosAtuais.dataInicial || filtrosAtuais.dataFinal) {
       // Apenas aplica o filtro se não estiver no modo "todos"
       if (!tiposFiltro.todos) {
-        const dataInicial = filtrosAtuais.dataInicial ? new Date(filtrosAtuais.dataInicial) : null;
-        const dataFinal = filtrosAtuais.dataFinal ? new Date(filtrosAtuais.dataFinal) : null;
+        const dataInicialStr = filtrosAtuais.dataInicial || null;
+        const dataFinalStr = filtrosAtuais.dataFinal || null;
         
         resultado = resultado.filter(titulo => {
           // Determina qual campo de data usar baseado no tipo de filtro
-          const dataCampo = tiposFiltro.vencimento 
-            ? new Date(titulo.vencimento) 
-            : tiposFiltro.pagamento && titulo.pagamento 
-              ? new Date(titulo.pagamento) 
-              : null;
+          const dataCampoStr = tiposFiltro.vencimento 
+            ? titulo.vencimento
+            : (tiposFiltro.pagamento && titulo.pagamento ? titulo.pagamento : null);
           
           // Se não tiver a data necessária ou for nula, não passa no filtro
-          if (!dataCampo) {
+          if (!dataCampoStr) {
             return tiposFiltro.pagamento ? false : true; // Se for filtro de pagamento, só mostra os pagos
           }
           
           // Aplica o filtro baseado nas datas fornecidas
-          const passaFiltroInicial = !dataInicial || dataCampo >= dataInicial;
-          const passaFiltroFinal = !dataFinal || dataCampo <= dataFinal;
+          const passa = dateInRangeStr(dataCampoStr, dataInicialStr, dataFinalStr);
           
-          return passaFiltroInicial && passaFiltroFinal;
+          return passa;
         });
       }
     }
@@ -857,7 +985,7 @@ const EmissaoTitulos: React.FC = () => {
   
   const handleGerarPDF = () => {
     try {
-      const relatorioService = new RelatoriosPDFService();
+      const relatorioService = relatoriosPDFService;
       
       const filtrosRelatorio = {
         tipo: filtros.tipo,
@@ -873,7 +1001,7 @@ const EmissaoTitulos: React.FC = () => {
       const doc = relatorioService.gerarRelatorioTitulos(titulosFiltrados, filtrosRelatorio);
       
       const nomeArquivo = `relatorio-titulos-${new Date().toISOString().slice(0, 10)}.pdf`;
-      relatorioService.salvar(nomeArquivo);
+      doc.save(nomeArquivo);
       
       setAlert({
         open: true,
@@ -897,7 +1025,104 @@ const EmissaoTitulos: React.FC = () => {
 
   // Função para gerar relatório tabulado
   const handleGerarRelatorioTabulado = () => {
-    setMostrarDadosNoModal(true);
+    try {
+      // Validar seleção
+      const selecionadas = configRelatorioTabulado.filiaisSelecionadas;
+      const temPeriodo = !!configRelatorioTabulado.dataInicial && !!configRelatorioTabulado.dataFinal;
+      if (!selecionadas || selecionadas.length === 0 || !temPeriodo) {
+        setAlert({ open: true, message: 'Selecione filiais e período para gerar o relatório.', severity: 'warning' });
+        return;
+      }
+
+      // Helper: parse date YYYY-MM-DD de forma segura (evita fuso)
+      const parseDate = (s: string) => {
+        const [y, m, d] = s.split('-').map(Number);
+        return new Date(y, (m || 1) - 1, d || 1);
+      };
+
+      const dataIni = parseDate(configRelatorioTabulado.dataInicial);
+      const dataFim = parseDate(configRelatorioTabulado.dataFinal);
+
+      // Filtrar títulos por filiais selecionadas e período (usando vencimento)
+      const titulosSelecionados = titulos.filter(t => {
+        const filialOk = t.filial_id ? selecionadas.includes(t.filial_id) : false;
+        if (!filialOk) return false;
+        const [y, m, d] = t.vencimento.split('-').map(Number);
+        const dt = new Date(y, (m || 1) - 1, d || 1);
+        return dt >= dataIni && dt <= dataFim;
+      });
+
+      // Lista de tipos conhecidos
+      const tiposNomes = tipos.map(t => t.nome);
+
+      // Função para montar array de DadosTabulados para um conjunto de títulos
+      const montarDadosTabulados = (lista: TituloCompleto[]): DadosTabulados[] => {
+        const agrupado: { [tipo: string]: TituloCompleto[] } = {};
+        lista.forEach(t => {
+          const tp = t.tipo || 'Não especificado';
+          if (!agrupado[tp]) agrupado[tp] = [];
+          agrupado[tp].push(t);
+        });
+
+        const totalGeralValor = lista.reduce((acc, t) => {
+          const v = validarValorMonetario(t.valor || '0') ? parseDecimalSeguro(t.valor || '0') : 0;
+          return parseDecimalSeguro(somarValores(acc, v));
+        }, 0);
+
+        return tiposNomes.map(tipoNome => {
+          const doTipo = agrupado[tipoNome] || [];
+          const pagos = doTipo.filter(t => t.status === 'pago');
+          const pendentes = doTipo.filter(t => t.status !== 'pago');
+
+          const valorPago = pagos.reduce((acc, t) => {
+            const v = validarValorMonetario(t.valor || '0') ? parseDecimalSeguro(t.valor || '0') : 0;
+            return parseDecimalSeguro(somarValores(acc, v));
+          }, 0);
+          const valorPendente = pendentes.reduce((acc, t) => {
+            const v = validarValorMonetario(t.valor || '0') ? parseDecimalSeguro(t.valor || '0') : 0;
+            return parseDecimalSeguro(somarValores(acc, v));
+          }, 0);
+          const valorTotal = parseDecimalSeguro(somarValores(valorPago, valorPendente));
+
+          return {
+            tipo: tipoNome,
+            pendente: { quantidade: pendentes.length, valor: valorPendente },
+            pago: { quantidade: pagos.length, valor: valorPago },
+            total: { quantidade: doTipo.length, valor: valorTotal },
+            percentual: totalGeralValor > 0 ? parseDecimalSeguro((valorTotal / totalGeralValor) * 100) : 0
+          } as DadosTabulados;
+        }).sort((a, b) => {
+          if (a.total.valor === 0 && b.total.valor === 0) return a.tipo.localeCompare(b.tipo);
+          if (a.total.valor === 0) return 1;
+          if (b.total.valor === 0) return -1;
+          return b.total.valor - a.total.valor;
+        });
+      };
+
+      if (selecionadas.length > 1) {
+        // Por filial
+        const dadosMap: Record<number, DadosTabulados[]> = {};
+        selecionadas.forEach(fid => {
+          const lista = titulosSelecionados.filter(t => t.filial_id === fid);
+          dadosMap[fid] = montarDadosTabulados(lista);
+        });
+        setDadosPorFilial(dadosMap);
+        setDadosTabulados([]);
+        setFilialAtiva(selecionadas[0]);
+      } else {
+        // Consolidado de uma filial
+        const lista = titulosSelecionados.filter(t => t.filial_id === selecionadas[0]);
+        const dados = montarDadosTabulados(lista);
+        setDadosTabulados(dados);
+        setDadosPorFilial({});
+        setFilialAtiva(selecionadas[0] || 0);
+      }
+
+      setMostrarDadosNoModal(true);
+    } catch (e) {
+      console.error('Erro ao gerar relatório tabulado:', e);
+      setAlert({ open: true, message: 'Erro ao gerar relatório tabulado.', severity: 'error' });
+    }
   };
 
   // Função para gerar PDF tabulado
@@ -942,368 +1167,68 @@ const EmissaoTitulos: React.FC = () => {
     gerarPDFBreakdownConsolidado(filiaisSelecionadas);
   };
 
-  // Função para gerar PDF individual de uma filial (EXATO COMO A TELA)
+  // Função para gerar PDF individual de uma filial usando o serviço correto
   const gerarPDFBreakdownFilial = (filialNome: string, dadosFilial: any) => {
-    import('jspdf').then(({ default: jsPDF }) => {
-      const doc = new jsPDF('portrait', 'mm', 'a4'); // RETRATO como solicitado
+    try {
+      const relatorioService = relatoriosPDFService;
       
-      // Configurações para retrato
-      const margin = 8;
-      const pageWidth = doc.internal.pageSize.width;
-      const pageHeight = doc.internal.pageSize.height;
-      let currentY = margin + 5;
+      // Usar o método correto do serviço que tem controle manual
+      const doc = relatorioService.gerarBreakdownMensal([dadosFilial], {
+        dataInicial: filtros.dataInicial || '',
+        dataFinal: filtros.dataFinal || '',
+        filial: filialNome
+      }, 'filial');
       
-      // Cabeçalho
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`BREAKDOWN MENSAL - ${filialNome.toUpperCase()}`, pageWidth / 2, currentY, { align: 'center' });
-      currentY += 6;
-      
-      const periodo = `${filtros.dataInicial?.split('-').reverse().join('/')} a ${filtros.dataFinal?.split('-').reverse().join('/')}`;
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Período: ${periodo}`, pageWidth / 2, currentY, { align: 'center' });
-      currentY += 10;
-      
-      // Definir larguras das colunas (EXATO COMO A TELA)
-      const colMesWidth = 20;
-      const colTipoWidth = 24; // Insumos, Lentes, etc.
-      const colSubWidth = 12; // Pendentes/Pagos
-      const colTotalWidth = 24;
-      
-      // Linha 1: Cabeçalhos principais
-      doc.setFillColor(240, 240, 240);
-      doc.rect(margin, currentY, pageWidth - 2 * margin, 6, 'F');
-      
-      doc.setFontSize(7);
-      doc.setFont('helvetica', 'bold');
-      doc.setDrawColor(0, 0, 0);
-      doc.setLineWidth(0.1);
-      
-      let xPos = margin;
-      
-      // Mês/Ano
-      doc.rect(xPos, currentY, colMesWidth, 12); // Altura dupla
-      doc.text('Mês/Ano', xPos + colMesWidth/2, currentY + 8, { align: 'center' });
-      xPos += colMesWidth;
-      
-      // Tipos de título (como na tela)
-      const tiposNaTela = ['Insumos', 'Lentes', 'Armações', 'Diversos', 'Equipamentos'];
-      tiposNaTela.forEach(tipoNome => {
-        doc.rect(xPos, currentY, colTipoWidth, 6);
-        doc.text(tipoNome, xPos + colTipoWidth/2, currentY + 4, { align: 'center' });
-        xPos += colTipoWidth;
-      });
-      
-      // TOTAL
-      doc.rect(xPos, currentY, colTotalWidth, 12); // Altura dupla
-      doc.text('TOTAL', xPos + colTotalWidth/2, currentY + 8, { align: 'center' });
-      
-      currentY += 6;
-      
-      // Linha 2: Sub-cabeçalhos (Pendentes/Pagos)
-      xPos = margin + colMesWidth;
-      tiposNaTela.forEach(() => {
-        doc.rect(xPos, currentY, colSubWidth, 6);
-        doc.text('Pendentes', xPos + colSubWidth/2, currentY + 4, { align: 'center' });
-        xPos += colSubWidth;
-        
-        doc.rect(xPos, currentY, colSubWidth, 6);
-        doc.text('Pagos', xPos + colSubWidth/2, currentY + 4, { align: 'center' });
-        xPos += colSubWidth;
-      });
-      
-      currentY += 6;
-      
-      // Dados por mês
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6);
-      
-      dadosFilial.meses.forEach((mes: any, mesIndex: number) => {
-        const isEven = mesIndex % 2 === 0;
-        if (isEven) {
-          doc.setFillColor(250, 250, 250);
-          doc.rect(margin, currentY, pageWidth - 2 * margin, 12, 'F');
-        }
-        
-        xPos = margin;
-        
-        // Mês/Ano
-        doc.rect(xPos, currentY, colMesWidth, 12);
-        doc.setFont('helvetica', 'bold');
-        doc.text(mes.mes, xPos + colMesWidth/2, currentY + 8, { align: 'center' });
-        doc.setFont('helvetica', 'normal');
-        xPos += colMesWidth;
-        
-        // Para cada tipo
-        tiposNaTela.forEach(tipoNome => {
-          const tipoMes = mes.tipos[tipoNome] || { pendentes: { quantidade: 0, valor: 0 }, pagos: { quantidade: 0, valor: 0 } };
-          
-          // Pendentes
-          doc.rect(xPos, currentY, colSubWidth, 12);
-          if (tipoMes.pendentes && tipoMes.pendentes.quantidade > 0) {
-            doc.text(tipoMes.pendentes.quantidade.toString(), xPos + colSubWidth/2, currentY + 4, { align: 'center' });
-            doc.text(`R$ ${tipoMes.pendentes.valor.toFixed(2)}`, xPos + colSubWidth/2, currentY + 9, { align: 'center' });
-          } else {
-            doc.text('0', xPos + colSubWidth/2, currentY + 4, { align: 'center' });
-            doc.text('R$ 0,00', xPos + colSubWidth/2, currentY + 9, { align: 'center' });
-          }
-          xPos += colSubWidth;
-          
-          // Pagos
-          doc.rect(xPos, currentY, colSubWidth, 12);
-          if (tipoMes.pagos && tipoMes.pagos.quantidade > 0) {
-            doc.text(tipoMes.pagos.quantidade.toString(), xPos + colSubWidth/2, currentY + 4, { align: 'center' });
-            doc.text(`R$ ${tipoMes.pagos.valor.toFixed(2)}`, xPos + colSubWidth/2, currentY + 9, { align: 'center' });
-          } else {
-            doc.text('0', xPos + colSubWidth/2, currentY + 4, { align: 'center' });
-            doc.text('R$ 0,00', xPos + colSubWidth/2, currentY + 9, { align: 'center' });
-          }
-          xPos += colSubWidth;
-        });
-        
-        // Total do mês
-        doc.rect(xPos, currentY, colTotalWidth, 12);
-        doc.setFont('helvetica', 'bold');
-        doc.text(mes.total.quantidade.toString(), xPos + colTotalWidth/2, currentY + 4, { align: 'center' });
-        doc.text(`R$ ${mes.total.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, xPos + colTotalWidth/2, currentY + 9, { align: 'center' });
-        doc.setFont('helvetica', 'normal');
-        
-        currentY += 12;
-      });
-      
-      // Linha TOTAL (como na tela)
-      doc.setFillColor(52, 144, 220); // Azul como na tela
-      doc.rect(margin, currentY, pageWidth - 2 * margin, 12, 'F');
-      
-      doc.setTextColor(255, 255, 255); // Texto branco
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      
-      xPos = margin;
-      
-      // TOTAL
-      doc.rect(xPos, currentY, colMesWidth, 12);
-      doc.text('TOTAL', xPos + colMesWidth/2, currentY + 8, { align: 'center' });
-      xPos += colMesWidth;
-      
-      // Totais por tipo
-      tiposNaTela.forEach(tipoNome => {
-        const totalTipo = dadosFilial.meses.reduce((acc: any, mes: any) => {
-          const tipoMes = mes.tipos[tipoNome] || { pendentes: { quantidade: 0, valor: 0 }, pagos: { quantidade: 0, valor: 0 } };
-          return {
-            pendentes: {
-              quantidade: acc.pendentes.quantidade + (tipoMes.pendentes?.quantidade || 0),
-              valor: acc.pendentes.valor + (tipoMes.pendentes?.valor || 0)
-            },
-            pagos: {
-              quantidade: acc.pagos.quantidade + (tipoMes.pagos?.quantidade || 0),
-              valor: acc.pagos.valor + (tipoMes.pagos?.valor || 0)
-            }
-          };
-        }, { pendentes: { quantidade: 0, valor: 0 }, pagos: { quantidade: 0, valor: 0 } });
-        
-        // Pendentes
-        doc.rect(xPos, currentY, colSubWidth, 12);
-        doc.text(totalTipo.pendentes.quantidade.toString(), xPos + colSubWidth/2, currentY + 4, { align: 'center' });
-        doc.text(`R$ ${totalTipo.pendentes.valor.toFixed(2)}`, xPos + colSubWidth/2, currentY + 9, { align: 'center' });
-        xPos += colSubWidth;
-        
-        // Pagos
-        doc.rect(xPos, currentY, colSubWidth, 12);
-        doc.text(totalTipo.pagos.quantidade.toString(), xPos + colSubWidth/2, currentY + 4, { align: 'center' });
-        doc.text(`R$ ${totalTipo.pagos.valor.toFixed(2)}`, xPos + colSubWidth/2, currentY + 9, { align: 'center' });
-        xPos += colSubWidth;
-      });
-      
-      // Total geral
-      doc.rect(xPos, currentY, colTotalWidth, 12);
-      doc.text(dadosFilial.total.quantidade.toString(), xPos + colTotalWidth/2, currentY + 4, { align: 'center' });
-      doc.text(`R$ ${dadosFilial.total.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, xPos + colTotalWidth/2, currentY + 9, { align: 'center' });
-      
-      doc.setTextColor(0, 0, 0); // Voltar texto preto
-      
-      // Rodapé
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, margin, pageHeight - 10);
-      doc.text(`Sistema de Gestão - ${filialNome}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
-      
-      // Salvar
+      // Salvar o PDF
       doc.save(`breakdown-${filialNome.replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.pdf`);
       
       setAlert({
         open: true,
-        message: `PDF profissional da filial ${filialNome} gerado com sucesso!`,
+        message: `PDF do breakdown de ${filialNome} gerado com sucesso!`,
         severity: 'success'
       });
-    });
+      
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      setAlert({
+        open: true,
+        message: 'Erro ao gerar PDF. Tente novamente.',
+        severity: 'error'
+      });
+    }
   };
 
-  // Função para gerar PDF consolidado das filiais selecionadas (EXATO COMO A TELA)
+  // Função para gerar PDF consolidado das filiais selecionadas usando o serviço correto
   const gerarPDFBreakdownConsolidado = (filiaisSelecionadas: any[]) => {
-    import('jspdf').then(({ default: jsPDF }) => {
-      const doc = new jsPDF('portrait', 'mm', 'a4'); // RETRATO como solicitado
+    try {
+      const relatorioService = relatoriosPDFService;
       
-      // Configurações para retrato
-      const margin = 8;
-      const pageWidth = doc.internal.pageSize.width;
-      const pageHeight = doc.internal.pageSize.height;
-      let currentY = margin + 5;
+      // Usar o método correto do serviço que tem controle manual
+      const doc = relatorioService.gerarBreakdownMensal(filiaisSelecionadas, {
+        dataInicial: filtros.dataInicial || '',
+        dataFinal: filtros.dataFinal || '',
+      }, 'consolidado');
       
-      // Cabeçalho
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.text('BREAKDOWN CONSOLIDADO - FILIAIS SELECIONADAS', pageWidth / 2, currentY, { align: 'center' });
-      currentY += 6;
-      
-      const periodo = `${filtros.dataInicial?.split('-').reverse().join('/')} a ${filtros.dataFinal?.split('-').reverse().join('/')}`;
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Período: ${periodo}`, pageWidth / 2, currentY, { align: 'center' });
-      currentY += 4;
-      
-      doc.setFontSize(8);
-      doc.text(`${filiaisSelecionadas.length} filiais selecionadas`, pageWidth / 2, currentY, { align: 'center' });
-      currentY += 10;
-      
-      // Criar tabela consolidada (FORMATO DA TELA)
-      if (filiaisSelecionadas.length > 0) {
-        // Definir larguras das colunas (EXATO COMO A TELA)
-        const colFilialWidth = 25;
-        const colTipoWidth = 22; // Insumos, Lentes, etc.
-        const colSubWidth = 11; // Pendentes/Pagos
-        const colTotalWidth = 22;
-        
-        // Cabeçalho da tabela
-        doc.setFillColor(240, 240, 240);
-        doc.rect(margin, currentY, pageWidth - 2 * margin, 8, 'F');
-        
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'bold');
-        doc.setDrawColor(0, 0, 0);
-        doc.setLineWidth(0.2);
-        
-        // Cabeçalho: Filial
-        doc.rect(margin, currentY, colFilialWidth, 8);
-        doc.text('FILIAL', margin + 2, currentY + 5);
-        
-        // Cabeçalhos dos meses
-        let xPos = margin + colFilialWidth;
-        filiaisSelecionadas[0].meses.forEach((mes: any) => {
-          doc.rect(xPos, currentY, colMesWidth, 8);
-          doc.text(mes.mes, xPos + colMesWidth/2, currentY + 5, { align: 'center' });
-          xPos += colMesWidth;
-        });
-        
-        // Cabeçalho: Total
-        doc.rect(xPos, currentY, colTotalWidth, 8);
-        doc.text('TOTAL', xPos + colTotalWidth/2, currentY + 5, { align: 'center' });
-        currentY += 8;
-        
-        // Dados das filiais
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-        
-        let totalGeralQtd = 0;
-        let totalGeralValor = 0;
-        const totaisPorMes: any[] = [];
-        
-        filiaisSelecionadas.forEach((dadosFilial, filialIndex) => {
-          const isEven = filialIndex % 2 === 0;
-          if (isEven) {
-            doc.setFillColor(250, 250, 250);
-            doc.rect(margin, currentY, pageWidth - 2 * margin, 8, 'F');
-          }
-          
-          // Nome da filial
-          doc.rect(margin, currentY, colFilialWidth, 8);
-          doc.setFont('helvetica', 'bold');
-          doc.text(dadosFilial.filial, margin + 2, currentY + 3);
-          doc.setFont('helvetica', 'normal');
-          
-          // Dados por mês
-          xPos = margin + colFilialWidth;
-          dadosFilial.meses.forEach((mes: any, mesIndex: number) => {
-            doc.rect(xPos, currentY, colMesWidth, 8);
-            
-            if (mes.total.quantidade > 0) {
-              doc.text(`${mes.total.quantidade} títulos`, xPos + 2, currentY + 3);
-              doc.text(`R$ ${mes.total.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, xPos + 2, currentY + 6);
-            } else {
-              doc.text('-', xPos + colMesWidth/2, currentY + 4.5, { align: 'center' });
-            }
-            
-            // Acumular totais por mês
-            if (!totaisPorMes[mesIndex]) {
-              totaisPorMes[mesIndex] = { quantidade: 0, valor: 0 };
-            }
-            totaisPorMes[mesIndex].quantidade += mes.total.quantidade;
-            totaisPorMes[mesIndex].valor += mes.total.valor;
-            
-            xPos += colMesWidth;
-          });
-          
-          // Total da filial
-          doc.rect(xPos, currentY, colTotalWidth, 8);
-          doc.setFont('helvetica', 'bold');
-          doc.text(`${dadosFilial.total.quantidade} títulos`, xPos + 2, currentY + 3);
-          doc.text(`R$ ${dadosFilial.total.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, xPos + 2, currentY + 6);
-          doc.setFont('helvetica', 'normal');
-          
-          totalGeralQtd += dadosFilial.total.quantidade;
-          totalGeralValor += dadosFilial.total.valor;
-          
-          currentY += 8;
-          
-          // Verificar se precisa de nova página
-          if (currentY > pageHeight - 40) {
-            doc.addPage();
-            currentY = margin;
-          }
-        });
-        
-        // Linha de totais gerais
-        doc.setFillColor(200, 200, 200);
-        doc.rect(margin, currentY, pageWidth - 2 * margin, 10, 'F');
-        
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        
-        // Total geral
-        doc.rect(margin, currentY, colFilialWidth, 10);
-        doc.text('TOTAL GERAL', margin + 2, currentY + 6);
-        
-        xPos = margin + colFilialWidth;
-        totaisPorMes.forEach((totalMes) => {
-          doc.rect(xPos, currentY, colMesWidth, 10);
-          doc.text(`${totalMes.quantidade} títulos`, xPos + 2, currentY + 4);
-          doc.text(`R$ ${totalMes.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, xPos + 2, currentY + 7);
-          xPos += colMesWidth;
-        });
-        
-        doc.rect(xPos, currentY, colTotalWidth, 10);
-        doc.text(`${totalGeralQtd} títulos`, xPos + 2, currentY + 4);
-        doc.text(`R$ ${totalGeralValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, xPos + 2, currentY + 7);
-      }
-      
-      // Rodapé
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, margin, pageHeight - 10);
-      doc.text(`Sistema de Gestão - Relatório Consolidado`, pageWidth - margin, pageHeight - 10, { align: 'right' });
-      
-      // Salvar
+      // Salvar o PDF
       doc.save(`breakdown-consolidado-${filiaisSelecionadas.length}-filiais-${new Date().toISOString().slice(0, 10)}.pdf`);
       
       setAlert({
         open: true,
-        message: `PDF consolidado profissional de ${filiaisSelecionadas.length} filiais gerado com sucesso!`,
+        message: `PDF consolidado de ${filiaisSelecionadas.length} filiais gerado com sucesso!`,
         severity: 'success'
       });
-    });
+      
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      setAlert({
+        open: true,
+        message: 'Erro ao gerar PDF. Tente novamente.',
+        severity: 'error'
+      });
+    }
   };
 
+  
   // Função para calcular totais gerais (sem filtro de data) para comparação
   const calcularTotaisGerais = () => {
     let titulosTotais = [...titulos];
@@ -1342,172 +1267,9 @@ const EmissaoTitulos: React.FC = () => {
     return { quantidade: totalQuantidade, valor: totalValor };
   };
 
-  // Função para calcular breakdown mensal por filial
-  const calcularBreakdownMensal = () => {
-    if (!filtros.dataInicial || !filtros.dataFinal || filtroTipo.todos) {
-      return [];
-    }
+  
 
-    // Debug: calculando breakdown mensal para o período selecionado
-
-    // Agrupar títulos filtrados por filial e mês
-    const dadosAgrupados: { [filial: string]: { [mesAno: string]: TituloCompleto[] } } = {};
-
-    titulosFiltrados.forEach(titulo => {
-      const filial = titulo.filial;
-      
-      // Criar data de vencimento de forma explícita para evitar problemas de fuso horário
-      const [anoVenc, mesVenc, diaVenc] = titulo.vencimento.split('-').map(Number);
-      const dataVencimento = new Date(anoVenc, mesVenc - 1, diaVenc);
-      const mesAno = `${dataVencimento.getFullYear()}-${String(dataVencimento.getMonth() + 1).padStart(2, '0')}`;
-
-      // Agrupamento: ${titulo.numero} -> ${filial} (${mesAno})
-
-      if (!dadosAgrupados[filial]) {
-        dadosAgrupados[filial] = {};
-      }
-      if (!dadosAgrupados[filial][mesAno]) {
-        dadosAgrupados[filial][mesAno] = [];
-      }
-
-      dadosAgrupados[filial][mesAno].push(titulo);
-    });
-
-    // Garantir que todas as filiais apareçam no breakdown, mesmo sem títulos
-    const todasFiliais = filtros.filial ? [filtros.filial] : filiais.map(f => f.nome);
-    todasFiliais.forEach(filialNome => {
-      if (!dadosAgrupados[filialNome]) {
-        dadosAgrupados[filialNome] = {};
-      }
-    });
-
-    // Dados agrupados por filial e mês
-
-    // Processar dados para o breakdown - agora inclui todas as filiais
-    const breakdown = todasFiliais.map(filialNome => {
-      const mesesFilial = dadosAgrupados[filialNome];
-      const meses: any[] = [];
-
-      // Gerar todos os meses do período - usando split para evitar problemas de fuso horário
-      const [anoInicial, mesInicial, diaInicial] = filtros.dataInicial.split('-').map(Number);
-      const [anoFinal, mesFinal, diaFinal] = filtros.dataFinal.split('-').map(Number);
-      
-      // Criar datas de forma explícita (mês é 0-indexed no JavaScript)
-      const dataInicial = new Date(anoInicial, mesInicial - 1, diaInicial);
-      const dataFinal = new Date(anoFinal, mesFinal - 1, diaFinal);
-      
-      // Período processado: dataInicial até dataFinal
-      
-      // Ajustar para o primeiro dia do mês inicial
-      const mesAtual = new Date(dataInicial.getFullYear(), dataInicial.getMonth(), 1);
-
-      // Ajustar data final para o último dia do mês final
-      const dataFinalAjustada = new Date(dataFinal.getFullYear(), dataFinal.getMonth() + 1, 0);
-      
-      // Processamento de meses do período
-      
-      while (mesAtual <= dataFinalAjustada) {
-        const mesAno = `${mesAtual.getFullYear()}-${String(mesAtual.getMonth() + 1).padStart(2, '0')}`;
-        const titulosDoMes = mesesFilial[mesAno] || [];
-
-        // Agrupar por tipo
-        const tiposMes: { [tipo: string]: { 
-          quantidade: number; 
-          valor: number;
-          pendentes: { quantidade: number; valor: number };
-          pagos: { quantidade: number; valor: number };
-        } } = {};
-        
-        // Inicializar todos os tipos com 0
-        tipos.forEach(tipo => {
-          tiposMes[tipo.nome] = { 
-            quantidade: 0, 
-            valor: 0,
-            pendentes: { quantidade: 0, valor: 0 },
-            pagos: { quantidade: 0, valor: 0 }
-          };
-        });
-
-        // Processar títulos do mês
-        titulosDoMes.forEach(titulo => {
-          const tipo = titulo.tipo;
-          const valor = parseDecimalSeguro(titulo.valor);
-          const isPago = titulo.status === 'pago';
-          
-          if (tiposMes[tipo]) {
-            if (isPago) {
-              tiposMes[tipo].pagos.quantidade += 1;
-              tiposMes[tipo].pagos.valor = parseDecimalSeguro(somarValores(tiposMes[tipo].pagos.valor, valor));
-            } else {
-              tiposMes[tipo].pendentes.quantidade += 1;
-              tiposMes[tipo].pendentes.valor = parseDecimalSeguro(somarValores(tiposMes[tipo].pendentes.valor, valor));
-            }
-            
-            // Manter totais gerais
-            tiposMes[tipo].quantidade += 1;
-            tiposMes[tipo].valor = parseDecimalSeguro(somarValores(tiposMes[tipo].valor, valor));
-          }
-        });
-
-        // Calcular total do mês
-        const totalPendentes = titulosDoMes.filter(t => t.status !== 'pago').length;
-        const totalPagos = titulosDoMes.filter(t => t.status === 'pago').length;
-        const valorPendentes = titulosDoMes
-          .filter(t => t.status !== 'pago')
-          .reduce((total, titulo) => parseDecimalSeguro(somarValores(total, parseDecimalSeguro(titulo.valor))), 0);
-        const valorPagos = titulosDoMes
-          .filter(t => t.status === 'pago')
-          .reduce((total, titulo) => parseDecimalSeguro(somarValores(total, parseDecimalSeguro(titulo.valor))), 0);
-
-        const totalMes = {
-          quantidade: titulosDoMes.length,
-          valor: titulosDoMes.reduce((total, titulo) => 
-            parseDecimalSeguro(somarValores(total, parseDecimalSeguro(titulo.valor))), 0),
-          pendentes: totalPendentes,
-          pagos: totalPagos,
-          valorPendentes: valorPendentes,
-          valorPagos: valorPagos
-        };
-
-        // Formatar nome do mês de forma mais consistente
-        const nomesMeses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-        const nomeMes = `${nomesMeses[mesAtual.getMonth()]}/${mesAtual.getFullYear()}`;
-
-        meses.push({
-          mes: nomeMes,
-          ano: mesAtual.getFullYear(),
-          tipos: tiposMes,
-          total: totalMes
-        });
-
-        // Processando mês: ${nomeMes} com ${titulosDoMes.length} títulos
-
-        mesAtual.setMonth(mesAtual.getMonth() + 1);
-      }
-
-      // Calcular total da filial
-      const totalFilial = {
-        quantidade: meses.reduce((total, mes) => total + mes.total.quantidade, 0),
-        valor: meses.reduce((total, mes) => parseDecimalSeguro(somarValores(total, mes.total.valor)), 0),
-        pendentes: meses.reduce((total, mes) => total + (mes.total.pendentes || 0), 0),
-        pagos: meses.reduce((total, mes) => total + (mes.total.pagos || 0), 0),
-        valorPendentes: meses.reduce((total, mes) => parseDecimalSeguro(somarValores(total, mes.total.valorPendentes || 0)), 0),
-        valorPagos: meses.reduce((total, mes) => parseDecimalSeguro(somarValores(total, mes.total.valorPagos || 0)), 0)
-      };
-
-      // Encontrar o ID da filial
-      const filialObj = filiais.find(f => f.nome === filialNome);
-      
-      return {
-        filial: filialNome,
-        filialId: filialObj?.id || 0,
-        meses,
-        total: totalFilial
-      };
-    });
-
-    return breakdown;
-  };
+  
 
   return (
     <Box sx={{ position: 'relative' }}>
@@ -2651,7 +2413,7 @@ const EmissaoTitulos: React.FC = () => {
                     </Box>
                   )}
 
-                  <TableContainer component={Paper} sx={{ mb: 2 }}>
+                  <TableContainer component={Paper} sx={{ mb: 2, maxWidth: '100%', overflowX: 'auto' }}>
                     <Table size="small">
                       <TableHead>
                         <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
@@ -2782,7 +2544,7 @@ const EmissaoTitulos: React.FC = () => {
                           </TableCell>
                           <TableCell align="center" sx={{ backgroundColor: '#0d47a1', color: 'white' }}>
                             <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                              {dadosFilial.total.pagos || 0}
+                              {(dadosFilial.total as any).pagos || 0}
                             </Typography>
                             <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
                               R$ {formatarDecimal(dadosFilial.total.valorPagos || 0)}

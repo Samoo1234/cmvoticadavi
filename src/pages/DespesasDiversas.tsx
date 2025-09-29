@@ -12,7 +12,7 @@ import {
 import { despesasDiversasService, type DespesaDiversaCompleta } from '../services/despesasDiversasService';
 import { filiaisService } from '../services/filiaisService';
 import { despesasService } from '../services/despesasService';
-import { RelatoriosPDFService } from '../services/relatoriosPDFService';
+import { relatoriosPDFService } from '../services/relatoriosPDFService';
 import { useAuth } from '../contexts/AuthContext';
 
 interface Filial {
@@ -305,7 +305,7 @@ export default function DespesasDiversas() {
 
   const handleGerarPDF = () => {
     try {
-      const relatorioService = new RelatoriosPDFService();
+      const relatorioService = relatoriosPDFService;
       
       // Determinar período baseado nas despesas filtradas
       const datasOrdenadas = despesasFiltradas
@@ -320,7 +320,7 @@ export default function DespesasDiversas() {
       const doc = relatorioService.gerarRelatorioDespesasDiversas(despesasFiltradas, periodo);
       
       const nomeArquivo = `relatorio-despesas-diversas-${new Date().toISOString().slice(0, 10)}.pdf`;
-      relatorioService.salvar(nomeArquivo);
+      doc.save(nomeArquivo);
       
       showAlert('Relatório PDF gerado com sucesso!', 'success');
     } catch (error) {

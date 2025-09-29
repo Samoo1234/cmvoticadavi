@@ -258,7 +258,7 @@ const ExtratoDespesas: React.FC = () => {
       
       // Salvar PDF
       const nomeArquivo = `extrato-despesas-${filtros.dataInicial}-a-${filtros.dataFinal}.pdf`;
-      relatorioService.salvar(nomeArquivo);
+      doc.save(nomeArquivo);
       
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);

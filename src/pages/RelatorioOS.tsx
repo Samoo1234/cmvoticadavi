@@ -7,8 +7,87 @@ import { custoOSService } from '../services/custoOSService';
 import type { CustoOS } from '../services/custoOSService';
 import { medicosService } from '../services/medicosService';
 import { formatDateToBrazilian } from '../utils/dateUtils';
-import { RelatoriosPDFService } from '../services/relatoriosPDFService';
+import { relatoriosPDFService } from '../services/relatoriosPDFService';
 
+
+// Componente principal
+const RelatorioOS: React.FC = () => {
+  // Estados básicos
+  const [filiais, setFiliais] = useState<{ id: number; nome: string }[]>([]);
+  const [medicos, setMedicos] = useState<{ id: number; nome: string }[]>([]);
+  const [carregandoFiliais, setCarregandoFiliais] = useState<boolean>(true);
+  const [carregandoOS, setCarregandoOS] = useState<boolean>(true);
+  const [osList, setOsList] = useState<CustoOS[]>([]);
+  const [filtros, setFiltros] = useState<{ filial: string; dataInicial: string; dataFinal: string }>({ filial: '', dataInicial: '', dataFinal: '' });
+  const [alert, setAlert] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({ open: false, message: '', severity: 'info' });
+
+  // Carregar dados iniciais
+  useEffect(() => {
+    const carregarDados = async () => {
+      try {
+        setCarregandoFiliais(true);
+        setCarregandoOS(true);
+        const [dadosFiliais, dadosMedicos, dadosCustos] = await Promise.all([
+          filiaisService.getAll(),
+          medicosService.getAll(),
+          custoOSService.getAll()
+        ]);
+
+        setFiliais((dadosFiliais || []).map((f: any) => ({ id: f.id, nome: f.nome })));
+        setMedicos((dadosMedicos || []).map((m: any) => ({ id: m.id, nome: m.nome })));
+        setOsList(dadosCustos || []);
+      } catch (error) {
+        console.error('Erro ao carregar dados para Relatório de OS:', error);
+        setAlert({ open: true, message: 'Erro ao carregar dados. Tente novamente.', severity: 'error' });
+      } finally {
+        setCarregandoFiliais(false);
+        setCarregandoOS(false);
+      }
+    };
+
+    carregarDados();
+  }, []);
+
+  // Utilitários
+  const getNomeFilial = (filialId: number) => {
+    const filial = filiais.find(f => f.id === filialId);
+    return filial ? filial.nome : 'Filial não encontrada';
+  };
+
+  const handleFiltroChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFiltros(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Aplicar filtros e adaptar dados para a UI
+  const osFiltradas: OS[] = (osList || [])
+    .filter(os => !filtros.filial || getNomeFilial(os.filial_id) === filtros.filial)
+    .filter(os => !filtros.dataInicial || os.data >= filtros.dataInicial)
+    .filter(os => !filtros.dataFinal || os.data <= filtros.dataFinal)
+    .map(os => ({
+      id: os.id,
+      filial: getNomeFilial(os.filial_id),
+      filial_id: os.filial_id,
+      data: os.data,
+      valorVenda: os.valor_venda || 0,
+      custoLentes: os.custo_lentes || 0,
+      custoArmacoes: os.custo_armacoes || 0,
+      custoMkt: os.custo_mkt || 0,
+      outrosCustos: os.outros_custos || 0,
+      medico_id: os.medico_id,
+      numero_tco: os.numero_tco
+    }));
+
+  // Totais e indicadores
+  const totalVendas = osFiltradas.reduce((acc, o) => acc + (o.valorVenda || 0), 0);
+  const totalLentes = osFiltradas.reduce((acc, o) => acc + (o.custoLentes || 0), 0);
+  const totalArmacoes = osFiltradas.reduce((acc, o) => acc + (o.custoArmacoes || 0), 0);
+  const totalMkt = osFiltradas.reduce((acc, o) => acc + (o.custoMkt || 0), 0);
+  const totalOutros = osFiltradas.reduce((acc, o) => acc + (o.outrosCustos || 0), 0);
+  const margemBruta = totalVendas - (totalLentes + totalArmacoes + totalMkt + totalOutros);
+  const totalOS = osFiltradas.length;
+  const margemMedia = totalOS ? margemBruta / totalOS : 0;
+  const totalArmacoesQtd = 0; // Campo não disponível na tabela, manter 0 para exibição
 
 // Interface para mapear os dados da API para o formato usado no componente
 interface OS {
@@ -25,193 +104,30 @@ interface OS {
   numero_tco?: string;
 }
 
-// Função para converter CustoOS para o formato OS usado no componente
-const mapCustoOSToOS = (custoOS: CustoOS, filialNome: string): OS => ({
-  id: custoOS.id,
-  filial: filialNome,
-  filial_id: custoOS.filial_id,
-  data: custoOS.data,
-  valorVenda: custoOS.valor_venda,
-  custoLentes: custoOS.custo_lentes,
-  custoArmacoes: custoOS.custo_armacoes,
-  custoMkt: custoOS.custo_mkt,
-  outrosCustos: custoOS.outros_custos,
-  medico_id: custoOS.medico_id,
-  numero_tco: custoOS.numero_tco
-});
-
-const RelatorioOS: React.FC = () => {
-  const [filtros, setFiltros] = useState({ filial: '', dataInicial: '', dataFinal: '' });
-  const [osList, setOsList] = useState<OS[]>([]);
-  const [filiais, setFiliais] = useState<Filial[]>([]);
-  const [medicos, setMedicos] = useState<{id: number, nome: string}[]>([]);
-  const [carregandoFiliais, setCarregandoFiliais] = useState(true);
-  const [carregandoOS, setCarregandoOS] = useState(true);
-  const [filialMap, setFilialMap] = useState<Map<number, string>>(new Map());
-  const [alert, setAlert] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({ open: false, message: '', severity: 'info' });
-
-  useEffect(() => {
-    const buscarDados = async () => {
-      try {
-        setCarregandoFiliais(true);
-        const [filiaisData, medicosData] = await Promise.all([
-          filiaisService.getAll(),
-          medicosService.getAll()
-        ]);
-        
-        setFiliais(filiaisData);
-        
-        // Criar um mapa de ID da filial para nome da filial para uso posterior
-        const novoFilialMap = new Map<number, string>();
-        filiaisData.forEach(filial => {
-          if (filial.id !== undefined) {
-            novoFilialMap.set(filial.id, filial.nome);
-          }
-        });
-        setFilialMap(novoFilialMap);
-        
-        // Formatar dados dos médicos
-        const medicosFormatados = medicosData.map((m: any) => ({
-          id: m.id!,
-          nome: m.nome
-        }));
-        setMedicos(medicosFormatados);
-      } catch (error) {
-        console.error('Erro ao buscar dados:', error);
-      } finally {
-        setCarregandoFiliais(false);
-      }
-    };
-
-    buscarDados();
-  }, []);
-  
-  // Efeito para buscar os dados de custos_os quando o mapa de filiais estiver pronto
-  useEffect(() => {
-    if (filialMap.size > 0) {
-      buscarDados();
-    }
-  }, [filialMap]);
-  
-  // Efeito para buscar os dados quando os filtros mudarem
-  useEffect(() => {
-    if (filialMap.size > 0) {
-      buscarDados();
-    }
-  }, [filtros]);
-
-  // Função para buscar dados com base nos filtros
-  const buscarDados = async () => {
-    try {
-      setCarregandoOS(true);
-      let custosData: CustoOS[] = [];
-      
-      // Buscar dados com base nos filtros selecionados
-      if (filtros.filial && filtros.dataInicial && filtros.dataFinal) {
-        // Encontrar o ID da filial pelo nome
-        const filialId = [...filialMap.entries()]
-          .find(([_, nome]) => nome === filtros.filial)?.[0];
-          
-        if (filialId) {
-          custosData = await custoOSService.getByFilialEPeriodo(
-            filialId, 
-            filtros.dataInicial, 
-            filtros.dataFinal
-          );
-        }
-      } else if (filtros.filial) {
-        // Encontrar o ID da filial pelo nome
-        const filialId = [...filialMap.entries()]
-          .find(([_, nome]) => nome === filtros.filial)?.[0];
-          
-        if (filialId) {
-          custosData = await custoOSService.getByFilial(filialId);
-        }
-      } else if (filtros.dataInicial && filtros.dataFinal) {
-        custosData = await custoOSService.getByPeriodo(
-          filtros.dataInicial, 
-          filtros.dataFinal
-        );
-      } else {
-        custosData = await custoOSService.getAll();
-      }
-      
-      // Mapear os dados para o formato usado no componente
-      const osData = custosData.map(custo => {
-        // Buscar o nome da filial no mapa ou tentar obter da API se necessário
-        let filialNome = filialMap.get(custo.filial_id);
-        
-        // Se o nome não for encontrado, garantir que estamos usando o nome completo
-        if (!filialNome) {
-          const filial = filiais.find(f => f.id === custo.filial_id);
-          filialNome = filial ? filial.nome : `Filial ${custo.filial_id}`;
-          
-          // Atualizar o mapa para futuras referências
-          if (filial && filial.id !== undefined) {
-            setFilialMap(new Map(filialMap.set(filial.id, filial.nome)));
-          }
-        }
-        return mapCustoOSToOS(custo, filialNome);
-      });
-      
-      setOsList(osData);
-    } catch (error) {
-      console.error('Erro ao buscar dados de custos de OS:', error);
-    } finally {
-      setCarregandoOS(false);
-    }
-  };
-  
-  // Usar os dados já filtrados da API
-  const osFiltradas = osList;
-
-  // Totais e indicadores
-  const totalVendas = osFiltradas.reduce((acc, os) => acc + (os.valorVenda || 0), 0);
-  const totalLentes = osFiltradas.reduce((acc, os) => acc + (os.custoLentes || 0), 0);
-  const totalArmacoes = osFiltradas.reduce((acc, os) => acc + (os.custoArmacoes || 0), 0);
-  const totalMkt = osFiltradas.reduce((acc, os) => acc + (os.custoMkt || 0), 0);
-  const totalOutros = osFiltradas.reduce((acc, os) => acc + (os.outrosCustos || 0), 0);
-  const margemBruta = totalVendas - (totalLentes + totalArmacoes + totalMkt + totalOutros);
-  const totalOS = osFiltradas.length;
-  const totalArmacoesQtd = osFiltradas.length; // Exemplo: quantidade de OS = quantidade de armações
-  const margemMedia = totalOS ? margemBruta / totalOS : 0;
-
-  const handleFiltroChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Se for um campo de data, garantir que o formato seja ISO para o backend
-    if (e.target.name === 'dataInicial' || e.target.name === 'dataFinal') {
-      setFiltros({ ...filtros, [e.target.name]: e.target.value });
-    } else {
-      setFiltros({ ...filtros, [e.target.name]: e.target.value });
-    }
-  };
-
   // Função para gerar PDF
   const handleGerarPDF = () => {
     try {
-      const relatorioService = new RelatoriosPDFService();
-      
+      const relatorioService = relatoriosPDFService;
       const filtrosRelatorio = {
         filial: filtros.filial || undefined,
         dataInicial: filtros.dataInicial || undefined,
         dataFinal: filtros.dataFinal || undefined
       };
       
-      // Adicionar os campos nomeMedico e numeroTco aos dados
       const osComDadosCompletos = osFiltradas.map(os => ({
         ...os,
         nomeMedico: getNomeMedico(os.medico_id),
         numeroTco: os.numero_tco
       }));
-      
-      const doc = relatorioService.gerarRelatorioOS(osComDadosCompletos, filtrosRelatorio);
-      
-      const nomeArquivo = `relatorio-os-${new Date().toISOString().slice(0, 10)}.pdf`;
-      relatorioService.salvar(nomeArquivo);
-      
-      setAlert({
-        open: true,
-        message: 'Relatório PDF gerado com sucesso!',
-        severity: 'success'
+            const doc = relatorioService.gerarRelatorioOS(osComDadosCompletos, filtrosRelatorio);
+       
+       const nomeArquivo = `relatorio-os-${new Date().toISOString().slice(0, 10)}.pdf`;
+      doc.save(nomeArquivo);
+       
+       setAlert({
+         open: true,
+         message: 'Relatório PDF gerado com sucesso!',
+         severity: 'success'
       });
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);

@@ -244,7 +244,7 @@ export default function DespesasFixas() {
       const doc = relatorioService.gerarRelatorioDespesasFixas(despesasFiltradas);
       
       const nomeArquivo = `relatorio-despesas-fixas-${new Date().toISOString().slice(0, 10)}.pdf`;
-      relatorioService.salvar(nomeArquivo);
+      doc.save(nomeArquivo);
       
       showAlert('Relatório PDF gerado com sucesso!', 'success');
     } catch (error) {

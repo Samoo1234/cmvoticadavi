@@ -197,6 +197,28 @@ export const usuariosService = {
     }
   },
 
+  // Redefinir senha do usuário (admin)
+  async resetPassword(userId: string, novaSenhaTemporaria: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { error } = await supabase
+        .from('usuarios')
+        .update({ 
+          senha_hash: novaSenhaTemporaria, // Em produção, fazer hash
+          senha_temporaria: true 
+        })
+        .eq('id', userId);
+
+      if (error) {
+        return { success: false, error: `Erro ao redefinir senha: ${error.message}` };
+      }
+
+      return { success: true };
+    } catch (error: any) {
+      console.error('Erro ao redefinir senha:', error);
+      return { success: false, error: 'Erro interno ao redefinir senha' };
+    }
+  },
+
   // Marcar senha como não temporária (após troca)
   async marcarSenhaTrocada(authUserId: string): Promise<boolean> {
     try {

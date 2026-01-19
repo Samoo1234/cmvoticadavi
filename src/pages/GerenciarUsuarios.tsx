@@ -38,13 +38,14 @@ import {
   Close as CloseIcon,
   Security as SecurityIcon,
   Person as PersonIcon,
-  AdminPanelSettings as AdminIcon
+  AdminPanelSettings as AdminIcon,
+  VpnKey as VpnKeyIcon
 } from '@mui/icons-material';
-import { 
-  usuariosService, 
+import {
+  usuariosService,
   funcionalidadesService,
   permissoesService,
-  type Usuario, 
+  type Usuario,
   type UsuarioCompleto,
   type Funcionalidade,
   type Permissao
@@ -61,6 +62,9 @@ const GerenciarUsuarios: React.FC = () => {
   const [editingUser, setEditingUser] = useState<UsuarioCompleto | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
+  const [resetPasswordUser, setResetPasswordUser] = useState<UsuarioCompleto | null>(null);
+  const [novaSenhaTemporaria, setNovaSenhaTemporaria] = useState('Temp123!');
   const [tabelasExistem, setTabelasExistem] = useState(true);
 
   // Form state
@@ -92,7 +96,7 @@ const GerenciarUsuarios: React.FC = () => {
         filiaisService.getAll(),
         funcionalidadesService.getAll()
       ]);
-      
+
       setUsuarios(usuariosData);
       setFiliais(filiaisData);
       setFuncionalidades(funcionalidadesData);
@@ -167,11 +171,11 @@ const GerenciarUsuarios: React.FC = () => {
 
   const handleEditPermissions = async (usuario: UsuarioCompleto) => {
     setEditingUser(usuario);
-    
+
     // Carregar permissões do usuário
     try {
       const permissoesUsuario = await permissoesService.getByUsuarioId(usuario.id!);
-      
+
       // Converter para formato do state
       const permissoesMap: Record<number, any> = {};
       funcionalidades.forEach(func => {
@@ -183,7 +187,7 @@ const GerenciarUsuarios: React.FC = () => {
           pode_excluir: permissao?.pode_excluir || false
         };
       });
-      
+
       setPermissoes(permissoesMap);
       setPermissoesDialogOpen(true);
     } catch (err: any) {
@@ -251,6 +255,30 @@ const GerenciarUsuarios: React.FC = () => {
     resetForm();
   };
 
+  const handleOpenResetPassword = (usuario: UsuarioCompleto) => {
+    setResetPasswordUser(usuario);
+    setNovaSenhaTemporaria('Temp123!');
+    setResetPasswordDialogOpen(true);
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetPasswordUser) return;
+
+    try {
+      const result = await usuariosService.resetPassword(resetPasswordUser.id!, novaSenhaTemporaria);
+
+      if (result.success) {
+        setSuccess(`✅ Senha redefinida com sucesso!\n\n👤 Usuário: ${resetPasswordUser.nome}\n🔑 Nova senha: ${novaSenhaTemporaria}\n\nO usuário será obrigado a trocar a senha no próximo login.`);
+        setResetPasswordDialogOpen(false);
+        setResetPasswordUser(null);
+      } else {
+        setError(result.error || 'Erro ao redefinir senha');
+      }
+    } catch (err: any) {
+      setError('Erro ao redefinir senha: ' + err.message);
+    }
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -316,10 +344,10 @@ const GerenciarUsuarios: React.FC = () => {
                   )}
                 </TableCell>
                 <TableCell>
-                  <Chip 
-                    label={usuario.ativo ? 'Ativo' : 'Inativo'} 
-                    color={usuario.ativo ? 'success' : 'error'} 
-                    size="small" 
+                  <Chip
+                    label={usuario.ativo ? 'Ativo' : 'Inativo'}
+                    color={usuario.ativo ? 'success' : 'error'}
+                    size="small"
                   />
                 </TableCell>
                 <TableCell align="center">
@@ -329,18 +357,27 @@ const GerenciarUsuarios: React.FC = () => {
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Gerenciar permissões">
-                    <IconButton 
-                      onClick={() => handleEditPermissions(usuario)} 
+                    <IconButton
+                      onClick={() => handleEditPermissions(usuario)}
                       size="small"
                       disabled={usuario.is_admin}
                     >
                       <SecurityIcon />
                     </IconButton>
                   </Tooltip>
+                  <Tooltip title="Redefinir senha">
+                    <IconButton
+                      onClick={() => handleOpenResetPassword(usuario)}
+                      size="small"
+                      color="warning"
+                    >
+                      <VpnKeyIcon />
+                    </IconButton>
+                  </Tooltip>
                   <Tooltip title="Excluir usuário">
-                    <IconButton 
-                      onClick={() => handleDelete(usuario.id!)} 
-                      size="small" 
+                    <IconButton
+                      onClick={() => handleDelete(usuario.id!)}
+                      size="small"
                       color="error"
                     >
                       <DeleteIcon />
@@ -391,7 +428,7 @@ const GerenciarUsuarios: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
-            
+
             {/* Campo senha temporária apenas para novos usuários */}
             {!editingUser && (
               <TextField
@@ -403,7 +440,7 @@ const GerenciarUsuarios: React.FC = () => {
                 helperText="O usuário será obrigado a trocar esta senha no primeiro login"
               />
             )}
-            
+
             <Box display="flex" gap={2}>
               <FormControlLabel
                 control={
@@ -435,10 +472,10 @@ const GerenciarUsuarios: React.FC = () => {
       </Dialog>
 
       {/* Dialog de Permissões */}
-      <Dialog 
-        open={permissoesDialogOpen} 
-        onClose={() => setPermissoesDialogOpen(false)} 
-        maxWidth="md" 
+      <Dialog
+        open={permissoesDialogOpen}
+        onClose={() => setPermissoesDialogOpen(false)}
+        maxWidth="md"
         fullWidth
       >
         <DialogTitle>
@@ -517,6 +554,46 @@ const GerenciarUsuarios: React.FC = () => {
           <Button onClick={() => setPermissoesDialogOpen(false)}>Cancelar</Button>
           <Button onClick={handleSavePermissions} variant="contained">
             Salvar Permissões
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog de Redefinir Senha */}
+      <Dialog
+        open={resetPasswordDialogOpen}
+        onClose={() => setResetPasswordDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          🔑 Redefinir Senha
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Alert severity="warning" sx={{ mb: 3 }}>
+              Você está prestes a redefinir a senha do usuário <strong>{resetPasswordUser?.nome}</strong>.
+              <br />
+              O usuário será obrigado a trocar a senha no próximo login.
+            </Alert>
+
+            <TextField
+              fullWidth
+              label="Nova Senha Temporária"
+              value={novaSenhaTemporaria}
+              onChange={(e) => setNovaSenhaTemporaria(e.target.value)}
+              helperText="Esta senha será informada ao usuário para que ele possa fazer login"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setResetPasswordDialogOpen(false)}>Cancelar</Button>
+          <Button
+            onClick={handleResetPassword}
+            variant="contained"
+            color="warning"
+            disabled={!novaSenhaTemporaria}
+          >
+            Redefinir Senha
           </Button>
         </DialogActions>
       </Dialog>
